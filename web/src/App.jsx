@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useState } from 'react';
-import { fetchTree, subscribeTree, viewUrl, pathFromViewUrl } from './api';
-import Sidebar from './components/Sidebar';
-import Viewer from './components/Viewer';
-import { EmptyState, Welcome } from './components/EmptyState';
+import { useCallback, useEffect, useState } from "react";
+import { fetchTree, subscribeTree, viewUrl, pathFromViewUrl } from "./api";
+import Sidebar from "./components/Sidebar";
+import Viewer from "./components/Viewer";
+import { EmptyState, Welcome } from "./components/EmptyState";
 
 export default function App() {
   const [tree, setTree] = useState(null);
   const [error, setError] = useState(null);
-  const [current, setCurrent] = useState(() => pathFromViewUrl(window.location.pathname));
+  const [current, setCurrent] = useState(() =>
+    pathFromViewUrl(window.location.pathname),
+  );
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
@@ -27,16 +29,16 @@ export default function App() {
 
   useEffect(() => {
     const onPop = () => setCurrent(pathFromViewUrl(window.location.pathname));
-    window.addEventListener('popstate', onPop);
-    return () => window.removeEventListener('popstate', onPop);
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
   }, []);
 
   const navigate = useCallback((path) => {
     if (path === null) {
-      history.pushState({}, '', '/');
+      history.pushState({}, "", "/");
       setCurrent(null);
     } else {
-      history.pushState({}, '', viewUrl(path));
+      history.pushState({}, "", viewUrl(path));
       setCurrent(path);
     }
   }, []);
@@ -53,13 +55,17 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen bg-white text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
+    <div className="flex h-screen bg-zinc-100 text-neutral-900 dark:bg-zinc-800 dark:text-neutral-100">
       <Sidebar tree={tree} selected={current} onSelect={navigate} />
-      <main className="min-w-0 flex-1 overflow-y-auto">
+      <main className="min-w-0 flex-1 overflow-y-auto bg-zinc-50 dark:bg-zinc-900 m-4 rounded-3xl">
         {tree && tree.count === 0 ? (
           <EmptyState rootName={tree.name} />
         ) : current ? (
-          <Viewer path={current} refreshKey={refreshKey} onNavigate={navigate} />
+          <Viewer
+            path={current}
+            refreshKey={refreshKey}
+            onNavigate={navigate}
+          />
         ) : (
           <Welcome />
         )}
