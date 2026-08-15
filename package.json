@@ -1,6 +1,6 @@
 {
   "name": "readingroom",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Zero-config doc browser for your codebase.",
   "type": "module",
   "license": "MIT",
