@@ -1,0 +1,55 @@
+{
+  "name": "readingroom",
+  "version": "0.1.0",
+  "description": "Zero-config doc browser for your codebase.",
+  "type": "module",
+  "license": "MIT",
+  "author": "saif71",
+  "homepage": "https://github.com/saif71/readingroom",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/saif71/readingroom.git"
+  },
+  "bin": {
+    "readingroom": "bin/readingroom.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "markdown",
+    "docs",
+    "documentation",
+    "viewer",
+    "browser",
+    "doc-browser",
+    "cli",
+    "txt"
+  ],
+  "scripts": {
+    "build": "vite build --config web/vite.config.js",
+    "dev:server": "node bin/readingroom.js --no-open",
+    "dev:web": "vite dev --config web/vite.config.js",
+    "test": "node test/smoke.test.mjs",
+    "prepack": "npm run build"
+  },
+  "devDependencies": {
+    "@tailwindcss/typography": "^0.5.20",
+    "@tailwindcss/vite": "^4.3.3",
+    "@vitejs/plugin-react": "^6.0.5",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "shiki": "^4.4.3",
+    "tailwindcss": "^4.3.3",
+    "vite": "^8.2.1"
+  }
+}

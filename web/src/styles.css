@@ -1,0 +1,42 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(0 0 0 / 0.25) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: rgb(0 0 0 / 0.2);
+}
+
+@media (prefers-color-scheme: dark) {
+  * {
+    scrollbar-color: rgb(255 255 255 / 0.15) transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgb(255 255 255 / 0.15);
+  }
+}
+
+/* Shiki code blocks */
+pre.shiki {
+  margin: 0;
+  border-radius: 0.5rem;
+  padding: 0.85rem 1rem;
+  font-size: 0.8125rem;
+  line-height: 1.65;
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+pre.shiki code {
+  display: block;
+  width: fit-content;
+}
