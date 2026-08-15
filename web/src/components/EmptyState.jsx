@@ -15,8 +15,8 @@ export function EmptyState({ rootName }) {
     <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
       <p className="text-lg text-neutral-500 dark:text-neutral-300">No viewable files found</p>
       <p className="max-w-md text-sm text-neutral-400">
-        readingroom looked through <span className="font-mono">{rootName}</span> for markdown, text, and image files,
-        respecting .gitignore and skipping dependency and build directories. Nothing to show.
+        readingroom looked through <span className="font-mono">{rootName}</span> for markdown, text, image, and PDF
+        files, respecting .gitignore and skipping dependency and build directories. Nothing to show.
       </p>
     </div>
   );

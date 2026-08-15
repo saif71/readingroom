@@ -1,6 +1,6 @@
 # readingroom - Zero-config doc browser for your codebase.
 
-One command, and every `.md`, `.txt`, and image file in your project is browsable in a clean UI - no files touched, nothing installed into your repo.
+One command, and every `.md`, `.txt`, image, and PDF file in your project is browsable in a clean UI - no files touched, nothing installed into your repo.
 
 ```bash
 npx readingroom
@@ -10,10 +10,11 @@ Codebases are drowning in documentation: READMEs, design docs, agent instruction
 
 ## What you get
 
-- **Sidebar tree** of every `.md`, `.txt`, and image file, with document counts per folder.
-- **File-type filter** under the search box - All / Markdown / Text / Images with live counts.
+- **Sidebar tree** of every `.md`, `.txt`, image, and PDF file, with document counts per folder.
+- **File-type filter** under the search box - All / Markdown / Text / Images / PDF with live counts.
 - **Rendered markdown** - GitHub-flavored (tables, task lists), syntax-highlighted code blocks, collapsed YAML frontmatter; `.txt` files shown as plain text
 - **Images** - `png`, `jpg`, `jpeg`, `webp`, `gif`, `avif`, and `svg` render right in the viewer
+- **PDFs** - rendered by your browser's built-in viewer, with an "Open in system viewer" fallback for browsers that can't display PDFs inline
 - **Search** - press `/` and type
 - **Live reload** - files created, edited, or deleted by you (or your AI agents) appear instantly
 - **Deep-linkable URLs** - `/view/docs/plan.md` works on reload.
@@ -22,13 +23,13 @@ Codebases are drowning in documentation: READMEs, design docs, agent instruction
 
 ## What it shows (and skips)
 
-readingroom surfaces `.md` and `.txt` files plus images (`png`, `jpg`, `jpeg`, `webp`, `gif`, `avif`, `svg`), including hidden directories like `.github/` or `.claude/` where agent docs and workflow docs live.
+readingroom surfaces `.md` and `.txt` files plus images (`png`, `jpg`, `jpeg`, `webp`, `gif`, `avif`, `svg`) and PDFs (`pdf`), including hidden directories like `.github/` or `.claude/` where agent docs and workflow docs live.
 
 It stays out of your way:
 
 - Your `.gitignore` is respected (including nested `.gitignore` files)
 - `node_modules`, `.git`, `dist`, `build`, `out`, `.next`, `target`, `coverage`, and friends are always skipped
-- Symlinks are not followed; files larger than 2 MB (text) or 50 MB (images) are not listed
+- Symlinks are not followed; there is no file size limit - if your browser can handle it, it gets listed
 - It is strictly **read-only** - readingroom never writes to your project
 
 ## CLI

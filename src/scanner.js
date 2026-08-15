@@ -3,12 +3,12 @@ import path from 'node:path';
 
 export const TEXT_EXTENSIONS = ['.md', '.txt'];
 export const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.avif', '.svg'];
-export const MAX_TEXT_SIZE = 2 * 1024 * 1024; // text files above this are excluded from the tree
-export const MAX_IMAGE_SIZE = 50 * 1024 * 1024;
+export const PDF_EXTENSIONS = ['.pdf'];
 
 const KIND_BY_EXT = new Map([
   ...TEXT_EXTENSIONS.map((ext) => [ext, ext === '.txt' ? 'txt' : 'md']),
   ...IMAGE_EXTENSIONS.map((ext) => [ext, 'img']),
+  ...PDF_EXTENSIONS.map((ext) => [ext, 'pdf']),
 ]);
 
 // Always ignored regardless of .gitignore. Dependency/build/cache directories
@@ -129,9 +129,7 @@ function countFiles(nodes) {
  * { type, name, path, count?, size?, mtime?, children? }
  * `path` is a repo-relative POSIX path ('' for the root).
  */
-export function scanTree(rootDir, opts = {}) {
-  const maxTextSize = opts.maxTextSize ?? MAX_TEXT_SIZE;
-  const maxImageSize = opts.maxImageSize ?? MAX_IMAGE_SIZE;
+export function scanTree(rootDir) {
   const rootAbs = path.resolve(rootDir);
   const rootName = path.basename(rootAbs) || rootAbs;
   const stack = [];
@@ -179,7 +177,6 @@ export function scanTree(rootDir, opts = {}) {
         } catch {
           continue;
         }
-        if (st.size > (kind === 'img' ? maxImageSize : maxTextSize)) continue;
         fileNodes.push({ type: 'file', name: entry.name, path: rel, kind, size: st.size, mtime: st.mtimeMs });
       }
     }

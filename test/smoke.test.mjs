@@ -38,12 +38,12 @@ write('ignored/secret.md', 'ignored dir\n');
 write('notes.gen.md', 'ignored glob\n');
 write('node_modules/dep/README.md', 'dep readme\n');
 write('dist/generated.md', 'build output\n');
-write('big.md', 'x'.repeat(3 * 1024 * 1024));
+write('big.md', 'x'.repeat(3 * 1024 * 1024)); // no size cap: large files are listed too
+write('doc.pdf', Buffer.from('%PDF-1.4\n%\xc7\xec\x8f\xa2\n1 0 obj\n<< /Type /Catalog >>\nendobj\n'));
 write('img.png', Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
 write('photo.JPG', Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]));
 write('logo.svg', '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"></svg>');
 write('pic.webp', Buffer.from([0x52, 0x49, 0x46, 0x46, 0x24, 0x00, 0x00, 0x00]));
-write('big-photo.png', Buffer.alloc(3 * 1024 * 1024, 1)); // images get a larger size cap than text
 mkdirSync(path.join(fixture, 'empty'));
 symlinkSync(path.join(fixture, 'README.md'), path.join(fixture, 'link.md'));
 
@@ -51,7 +51,8 @@ const EXPECTED = [
   '.github/workflows/ci.md',
   'NOTES.MD',
   'README.md',
-  'big-photo.png',
+  'big.md',
+  'doc.pdf',
   'docs/api.txt',
   'docs/guide.md',
   'img.png',
@@ -63,7 +64,16 @@ const EXPECTED = [
 
 let failures = 0;
 try {
-  const app = await startServer({ root: fixture, port: 0, distDir: path.resolve('dist') });
+  const openedWith = []; // records what the system-opener stub was asked to open
+  const app = await startServer({
+    root: fixture,
+    port: 0,
+    distDir: path.resolve('dist'),
+    openFile: async (abs) => {
+      openedWith.push(abs);
+      return true;
+    },
+  });
   const base = app.url;
 
   try {
@@ -77,7 +87,13 @@ try {
     const kindByPath = Object.fromEntries(flattenTree(tree).map((node) => [node.path, node.kind]));
     check(
       '/api/tree responds with the tree',
-      treeRes.ok && tree.count === EXPECTED.length && kindByPath['README.md'] === 'md' && kindByPath['docs/api.txt'] === 'txt' && kindByPath['img.png'] === 'img' && kindByPath['logo.svg'] === 'img',
+      treeRes.ok &&
+        tree.count === EXPECTED.length &&
+        kindByPath['README.md'] === 'md' &&
+        kindByPath['docs/api.txt'] === 'txt' &&
+        kindByPath['img.png'] === 'img' &&
+        kindByPath['logo.svg'] === 'img' &&
+        kindByPath['doc.pdf'] === 'pdf',
       `count=${tree.count}`
     );
 
@@ -90,13 +106,15 @@ try {
     const txt = await txtRes.json();
     check('/api/file returns txt kind', txtRes.ok && txt.kind === 'txt');
 
-    // 4. Oversized file refused.
+    // 4. Large files are served — there is no size cap.
     const bigRes = await fetch(`${base}/api/file?p=big.md`);
-    check('oversized file rejected with 413', bigRes.status === 413);
+    const big = await bigRes.json();
+    check('large file served in full (no size cap)', bigRes.ok && big.content.length === 3 * 1024 * 1024, `length=${big.content?.length}`);
 
     // 5. Non-doc extensions rejected.
     const pngMetaRes = await fetch(`${base}/api/file?p=img.png`);
-    check('non-md/txt rejected from /api/file', pngMetaRes.status === 400);
+    const pdfMetaRes = await fetch(`${base}/api/file?p=doc.pdf`);
+    check('non-md/txt rejected from /api/file', pngMetaRes.status === 400 && pdfMetaRes.status === 400);
 
     // 6. Path traversal blocked.
     for (const p of ['../../etc/passwd', '%2e%2e%2f%2e%2e%2fetc%2fpasswd', '/etc/passwd', 'docs/../../link.md']) {
@@ -115,7 +133,34 @@ try {
       `ct=${rawRes.headers.get('content-type')}`
     );
 
-    // 8. Forged Host header rejected.
+    // 8. Raw PDF: correct MIME, exempt from CSP sandbox (built-in viewers).
+    const rawPdfRes = await fetch(`${base}/api/raw?p=doc.pdf`);
+    check(
+      'raw pdf served with pdf MIME, exempt from CSP sandbox',
+      rawPdfRes.ok &&
+        rawPdfRes.headers.get('content-type') === 'application/pdf' &&
+        rawPdfRes.headers.get('content-security-policy') === null,
+      `ct=${rawPdfRes.headers.get('content-type')} csp=${rawPdfRes.headers.get('content-security-policy')}`
+    );
+
+    // 9. /api/open hands PDFs to the system opener (stubbed here).
+    const openRes = await fetch(`${base}/api/open?p=${encodeURIComponent('doc.pdf')}`, { method: 'POST' });
+    check(
+      '/api/open opens a pdf with the system default app',
+      openRes.ok && (await openRes.json()).ok === true && openedWith.at(-1) === path.join(fixture, 'doc.pdf'),
+      JSON.stringify(openedWith)
+    );
+
+    const openGetRes = await fetch(`${base}/api/open?p=doc.pdf`);
+    check('/api/open rejects GET', openGetRes.status === 405, `status=${openGetRes.status}`);
+
+    const openTraversalRes = await fetch(`${base}/api/open?p=../../etc/passwd`, { method: 'POST' });
+    check('/api/open rejects traversal', openTraversalRes.status === 403, `status=${openTraversalRes.status}`);
+
+    const openPngRes = await fetch(`${base}/api/open?p=img.png`, { method: 'POST' });
+    check('/api/open rejects non-pdf files', openPngRes.status === 400, `status=${openPngRes.status}`);
+
+    // 10. Forged Host header rejected.
     await new Promise((resolve) => {
       const req = http.get({ host: '127.0.0.1', port: app.port, path: '/api/tree', headers: { Host: 'evil.com' } }, (res) => {
         check('forged Host header rejected', res.statusCode === 403, `status=${res.statusCode}`);
@@ -128,14 +173,14 @@ try {
       });
     });
 
-    // 9. SPA shell served for / and /view/... when dist exists.
+    // 11. SPA shell served for / and /view/... when dist exists.
     for (const route of ['/', '/view/README.md']) {
       const res = await fetch(base + route);
       const body = await res.text();
       check(`SPA shell at ${route}`, res.ok && body.includes('<div id="root">'));
     }
 
-    // 10. SSE live reload: adding a file pushes a new tree.
+    // 12. SSE live reload: adding a file pushes a new tree.
     const sse = await fetch(`${base}/api/events`);
     const reader = sse.body.getReader();
     const decoder = new TextDecoder();

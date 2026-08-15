@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Tree from './Tree';
 import { fuzzyMatch } from '../fuzzy';
+import { useTheme } from '../theme';
 
 function flattenFiles(node, out = []) {
   for (const child of node.children || []) {
@@ -32,12 +33,61 @@ function pruneByKind(node, kind) {
   return { ...node, children, count };
 }
 
-const KIND_LABELS = { md: 'Markdown', txt: 'Text', img: 'Images' };
+/** Collect the paths of every folder in a tree, for expand-all. */
+function collectDirs(node, out = []) {
+  for (const child of node.children || []) {
+    if (child.type === 'dir') {
+      out.push(child.path);
+      collectDirs(child, out);
+    }
+  }
+  return out;
+}
+
+const KIND_LABELS = { md: 'Markdown', txt: 'Text', img: 'Images', pdf: 'PDF' };
+
+const THEMES = [
+  { id: 'system', label: 'System' },
+  { id: 'light', label: 'Light' },
+  { id: 'dark', label: 'Dark' },
+];
+
+/** iOS-style segmented control: recessed track with one raised pill per option. */
+function Segmented({ label, options, value, onSelect }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-16 shrink-0 whitespace-nowrap text-xs font-medium text-neutral-500 dark:text-neutral-400">
+        {label}
+      </span>
+      <div
+        className="flex flex-1 rounded-full bg-neutral-200/70 p-0.5 dark:bg-neutral-800"
+        role="group"
+        aria-label={label}
+      >
+        {options.map((option) => (
+          <button
+            key={option.id}
+            onClick={() => onSelect(option.id)}
+            aria-pressed={value === option.id}
+            className={`flex-1 rounded-full px-2 py-1 text-xs font-medium transition-colors ${
+              value === option.id
+                ? 'bg-white text-neutral-900 shadow-sm dark:bg-neutral-600 dark:text-white'
+                : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200'
+            }`}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function Sidebar({ tree, selected, onSelect }) {
   const [query, setQuery] = useState('');
   const [kind, setKind] = useState('all');
   const [expanded, setExpanded] = useState(() => new Set());
+  const [theme, setTheme] = useTheme();
   const inputRef = useRef(null);
 
   useEffect(() => {
@@ -78,7 +128,7 @@ export default function Sidebar({ tree, selected, onSelect }) {
 
   const files = useMemo(() => (tree ? flattenFiles(tree) : []), [tree]);
   const kindCounts = useMemo(() => {
-    const counts = { md: 0, txt: 0, img: 0 };
+    const counts = { md: 0, txt: 0, img: 0, pdf: 0 };
     for (const file of files) counts[file.kind] += 1;
     return counts;
   }, [files]);
@@ -88,6 +138,15 @@ export default function Sidebar({ tree, selected, onSelect }) {
     [files, kind]
   );
   const visibleTree = useMemo(() => (tree && kind !== 'all' ? pruneByKind(tree, kind) : tree), [tree, kind]);
+  const dirPaths = useMemo(() => (visibleTree ? collectDirs(visibleTree) : []), [visibleTree]);
+
+  // Which segment (if any) reflects the tree: fully expanded, fully collapsed, or mixed.
+  const treeState =
+    dirPaths.length > 0 && dirPaths.every((p) => expanded.has(p))
+      ? 'expand'
+      : expanded.size === 0
+        ? 'collapse'
+        : null;
 
   const matches = useMemo(() => {
     const q = query.trim();
@@ -108,7 +167,7 @@ export default function Sidebar({ tree, selected, onSelect }) {
     });
 
   const chips = [{ id: 'all', label: 'All', count: files.length }].concat(
-    ['md', 'txt', 'img']
+    ['md', 'txt', 'img', 'pdf']
       .filter((k) => kindCounts[k] > 0)
       .map((k) => ({ id: k, label: KIND_LABELS[k], count: kindCounts[k] }))
   );
@@ -178,6 +237,18 @@ export default function Sidebar({ tree, selected, onSelect }) {
           <p className="px-2 py-4 text-sm text-neutral-400">No files of this type.</p>
         )}
       </nav>
+      <div className="space-y-2 border-t border-neutral-200 px-3 py-2.5 dark:border-neutral-800">
+        <Segmented
+          label="File tree"
+          value={treeState}
+          onSelect={(id) => setExpanded(id === 'expand' ? new Set(dirPaths) : new Set())}
+          options={[
+            { id: 'expand', label: 'Expand all' },
+            { id: 'collapse', label: 'Collapse all' },
+          ]}
+        />
+        <Segmented label="Theme" value={theme} onSelect={setTheme} options={THEMES} />
+      </div>
     </aside>
   );
 }

@@ -20,8 +20,9 @@ Options:
   -h, --help            Show this help
   -v, --version         Show version
 
-It scans the directory for .md and .txt files (respecting .gitignore and
-skipping node_modules and friends) and serves a read-only browser UI.
+It scans the directory for .md, .txt, image, and PDF files (respecting
+.gitignore and skipping node_modules and friends) and serves a read-only
+browser UI.
 `;
 
 function parseArgs(argv) {

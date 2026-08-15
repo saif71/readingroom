@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { fetchFile, isImagePath } from '../api';
+import { fetchFile, isImagePath, isPdfPath } from '../api';
 import MarkdownView from './MarkdownView';
 import TextView from './TextView';
 import ImageView from './ImageView';
+import PdfView from './PdfView';
 
 /**
  * Split a leading YAML frontmatter block off a markdown document.
@@ -62,9 +63,10 @@ function Header({ name, path }) {
 export default function Viewer({ path, refreshKey, onNavigate }) {
   const [state, setState] = useState({ status: 'loading' });
   const isImage = isImagePath(path);
+  const isPdf = isPdfPath(path);
 
   useEffect(() => {
-    if (isImage) return; // images render straight from /api/raw, no fetch needed
+    if (isImage || isPdf) return; // binary kinds render straight from /api/raw, no fetch needed
     setState({ status: 'loading' });
     let alive = true;
     fetchFile(path)
@@ -73,13 +75,22 @@ export default function Viewer({ path, refreshKey, onNavigate }) {
     return () => {
       alive = false;
     };
-  }, [path, refreshKey, isImage]);
+  }, [path, refreshKey, isImage, isPdf]);
 
   if (isImage) {
     return (
       <div className="mx-auto max-w-4xl px-6 py-8 sm:px-10">
         <Header name={path.split('/').pop()} path={path} />
         <ImageView path={path} refreshKey={refreshKey} />
+      </div>
+    );
+  }
+
+  if (isPdf) {
+    return (
+      <div className="mx-auto max-w-5xl px-6 py-8 sm:px-10">
+        <Header name={path.split('/').pop()} path={path} />
+        <PdfView path={path} refreshKey={refreshKey} />
       </div>
     );
   }

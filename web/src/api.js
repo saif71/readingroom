@@ -1,8 +1,21 @@
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.avif', '.svg']);
+const PDF_EXTS = new Set(['.pdf']);
 
 export function isImagePath(p) {
   const dot = p.lastIndexOf('.');
   return dot !== -1 && IMAGE_EXTS.has(p.slice(dot).toLowerCase());
+}
+
+export function isPdfPath(p) {
+  const dot = p.lastIndexOf('.');
+  return dot !== -1 && PDF_EXTS.has(p.slice(dot).toLowerCase());
+}
+
+export async function openInSystemApp(path) {
+  const res = await fetch(`/api/open?p=${encodeURIComponent(path)}`, { method: 'POST' });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `failed to open ${path}`);
+  return body;
 }
 
 export async function fetchTree() {

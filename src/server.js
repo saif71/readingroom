@@ -1,7 +1,8 @@
 import http from 'node:http';
 import { createReadStream, existsSync, readFileSync, statSync, watch } from 'node:fs';
 import path from 'node:path';
-import { scanTree, fileKind, MAX_TEXT_SIZE, DEFAULT_IGNORED_DIRS } from './scanner.js';
+import { scanTree, fileKind, DEFAULT_IGNORED_DIRS } from './scanner.js';
+import { openExternal } from './openBrowser.js';
 
 const MIME = {
   '.md': 'text/markdown; charset=utf-8',
@@ -81,7 +82,7 @@ const NOT_BUILT_PAGE = `<!doctype html>
  *
  * Returns { server, port, url, root, tree(), close() }.
  */
-export async function startServer({ root, port = 9345, distDir, autoIncrementLimit = 100 }) {
+export async function startServer({ root, port = 9345, distDir, autoIncrementLimit = 100, openFile = openExternal }) {
   const rootAbs = path.resolve(root);
   let cachedTree = scanTree(rootAbs);
   let lastTreeJson = JSON.stringify(cachedTree);
@@ -206,10 +207,6 @@ export async function startServer({ root, port = 9345, distDir, autoIncrementLim
           sendJson(res, 400, { error: 'not a file' });
           return;
         }
-        if (st.size > MAX_TEXT_SIZE) {
-          sendJson(res, 413, { error: 'file is larger than 2MB and is not shown' });
-          return;
-        }
         const content = readFileSync(abs, 'utf8');
         sendJson(res, 200, {
           path: rel.replace(/\\/g, '/'),
@@ -240,15 +237,53 @@ export async function startServer({ root, port = 9345, distDir, autoIncrementLim
           sendJson(res, 404, { error: 'not found' });
           return;
         }
+        const type = mimeType(abs);
         res.writeHead(200, {
-          'Content-Type': mimeType(abs),
+          'Content-Type': type,
           'Content-Length': st.size,
           'Cache-Control': 'no-store',
           'X-Content-Type-Options': 'nosniff',
-          // Repo files are data, not trusted same-origin documents.
-          'Content-Security-Policy': 'sandbox',
+          // Repo files are data, not trusted same-origin documents. PDFs are
+          // exempt: some browsers refuse to run their built-in PDF viewer on
+          // a response delivered under CSP sandbox.
+          ...(type === 'application/pdf' ? {} : { 'Content-Security-Policy': 'sandbox' }),
         });
         createReadStream(abs).pipe(res);
+        return;
+      }
+
+      if (pathname === '/api/open') {
+        if (req.method !== 'POST') {
+          sendJson(res, 405, { error: 'method not allowed' });
+          return;
+        }
+        const rel = url.searchParams.get('p');
+        const abs = safeResolve(rel);
+        if (!abs) {
+          sendJson(res, 403, { error: 'path outside root' });
+          return;
+        }
+        const kind = fileKind(path.basename(abs));
+        if (kind !== 'pdf') {
+          sendJson(res, 400, { error: 'only PDF files can be opened in a system app' });
+          return;
+        }
+        let st;
+        try {
+          st = statSync(abs);
+        } catch {
+          sendJson(res, 404, { error: 'not found' });
+          return;
+        }
+        if (!st.isFile()) {
+          sendJson(res, 404, { error: 'not found' });
+          return;
+        }
+        if (!(await openFile(abs))) {
+          sendJson(res, 500, { error: 'could not open the file with the system default app' });
+          return;
+        }
+        sendJson(res, 200, { ok: true });
         return;
       }
 

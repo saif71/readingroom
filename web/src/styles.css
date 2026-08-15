@@ -1,6 +1,9 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
+/* Class-based dark mode so the theme picker can override the OS setting. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 * {
   scrollbar-width: thin;
   scrollbar-color: rgb(0 0 0 / 0.25) transparent;
@@ -16,13 +19,13 @@
   background: rgb(0 0 0 / 0.2);
 }
 
-@media (prefers-color-scheme: dark) {
-  * {
-    scrollbar-color: rgb(255 255 255 / 0.15) transparent;
-  }
-  ::-webkit-scrollbar-thumb {
-    background: rgb(255 255 255 / 0.15);
-  }
+.dark,
+.dark * {
+  scrollbar-color: rgb(255 255 255 / 0.15) transparent;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: rgb(255 255 255 / 0.15);
 }
 
 /* Shiki code blocks */

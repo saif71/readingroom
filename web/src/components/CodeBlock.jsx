@@ -3,6 +3,7 @@ import { createHighlighterCore } from 'shiki/core';
 import { createJavaScriptRegexEngine } from 'shiki/engine/javascript';
 import githubDark from 'shiki/themes/github-dark.mjs';
 import githubLight from 'shiki/themes/github-light.mjs';
+import { useIsDark } from '../theme';
 
 // Curated language set — each is a lazy chunk, fetched on first use.
 const LANG_MODULES = {
@@ -90,7 +91,7 @@ function usePrefersDark() {
 
 export default function CodeBlock({ code, lang }) {
   const [html, setHtml] = useState(null);
-  const dark = usePrefersDark();
+  const dark = useIsDark();
 
   useEffect(() => {
     let alive = true;
