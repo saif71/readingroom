@@ -31,12 +31,47 @@ export async function fetchFile(path) {
   return body;
 }
 
+export async function fetchRepo() {
+  const res = await fetch('/api/repo');
+  if (!res.ok) throw new Error('failed to load repository info');
+  return res.json();
+}
+
+export async function fetchMeta(path) {
+  const res = await fetch(`/api/meta?p=${encodeURIComponent(path)}`);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `failed to load metadata for ${path}`);
+  return body;
+}
+
+export async function fetchHistory(path) {
+  const res = await fetch(`/api/history?p=${encodeURIComponent(path)}`);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `failed to load history for ${path}`);
+  return body;
+}
+
+export async function fetchVersion(path, ref) {
+  const res = await fetch(`/api/version?p=${encodeURIComponent(path)}&ref=${encodeURIComponent(ref)}`);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `failed to load a version of ${path}`);
+  return body;
+}
+
+export function versionRawUrl(path, ref) {
+  return `/api/version?p=${encodeURIComponent(path)}&ref=${encodeURIComponent(ref)}&raw=1`;
+}
+
 export function rawUrl(path) {
   return `/api/raw?p=${encodeURIComponent(path)}`;
 }
 
 export function viewUrl(path) {
   return '/view/' + path.split('/').map(encodeURIComponent).join('/');
+}
+
+export function versionUrl(path, ref) {
+  return viewUrl(path) + `?ref=${encodeURIComponent(ref)}`;
 }
 
 export function pathFromViewUrl(pathname) {

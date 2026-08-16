@@ -1,8 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
-import { fetchTree, subscribeTree, viewUrl, pathFromViewUrl } from "./api";
+import { fetchTree, subscribeTree, viewUrl, versionUrl, pathFromViewUrl } from "./api";
 import Sidebar from "./components/Sidebar";
 import Viewer from "./components/Viewer";
+import Inspector from "./components/Inspector";
 import { EmptyState, Welcome } from "./components/EmptyState";
+
+const REF_RE = /^[0-9a-f]{7,40}$/i;
+
+function refFromLocation() {
+  const ref = new URLSearchParams(window.location.search).get("ref");
+  return ref && REF_RE.test(ref) ? ref : null;
+}
 
 export default function App() {
   const [tree, setTree] = useState(null);
@@ -10,6 +18,8 @@ export default function App() {
   const [current, setCurrent] = useState(() =>
     pathFromViewUrl(window.location.pathname),
   );
+  // Commit sha when a historical version is open (deep-linkable via ?ref=).
+  const [refSha, setRefSha] = useState(refFromLocation);
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
@@ -28,7 +38,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const onPop = () => setCurrent(pathFromViewUrl(window.location.pathname));
+    const onPop = () => {
+      setCurrent(pathFromViewUrl(window.location.pathname));
+      setRefSha(refFromLocation());
+    };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, []);
@@ -41,6 +54,13 @@ export default function App() {
       history.pushState({}, "", viewUrl(path));
       setCurrent(path);
     }
+    setRefSha(null);
+  }, []);
+
+  const navigateVersion = useCallback((path, sha) => {
+    history.pushState({}, "", versionUrl(path, sha));
+    setCurrent(path);
+    setRefSha(sha);
   }, []);
 
   if (error) {
@@ -63,6 +83,7 @@ export default function App() {
         ) : current ? (
           <Viewer
             path={current}
+            refSha={refSha}
             refreshKey={refreshKey}
             onNavigate={navigate}
           />
@@ -70,6 +91,14 @@ export default function App() {
           <Welcome />
         )}
       </main>
+      {current && (
+        <Inspector
+          path={current}
+          refSha={refSha}
+          refreshKey={refreshKey}
+          onNavigateVersion={navigateVersion}
+        />
+      )}
     </div>
   );
 }
