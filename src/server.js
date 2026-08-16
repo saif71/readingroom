@@ -3,6 +3,7 @@ import { createReadStream, existsSync, readFileSync, statSync, watch } from 'nod
 import path from 'node:path';
 import { scanTree, fileKind, DEFAULT_IGNORED_DIRS } from './scanner.js';
 import { openExternal } from './openBrowser.js';
+import { repoStatus, lastCommitFor, fileHistory, fileVersion, VersionNotFound } from './git.js';
 
 const MIME = {
   '.md': 'text/markdown; charset=utf-8',
@@ -216,6 +217,140 @@ export async function startServer({ root, port = 9345, distDir, autoIncrementLim
           mtime: st.mtimeMs,
           kind,
           content,
+        });
+        return;
+      }
+
+      if (pathname === '/api/repo') {
+        sendJson(res, 200, await repoStatus(rootAbs));
+        return;
+      }
+
+      if (pathname === '/api/meta') {
+        const rel = url.searchParams.get('p');
+        const abs = safeResolve(rel);
+        if (!abs) {
+          sendJson(res, 403, { error: 'path outside root' });
+          return;
+        }
+        let st;
+        try {
+          st = statSync(abs);
+        } catch {
+          sendJson(res, 404, { error: 'not found' });
+          return;
+        }
+        if (!st.isFile()) {
+          sendJson(res, 400, { error: 'not a file' });
+          return;
+        }
+        const cleanRel = rel.replace(/\\/g, '/');
+        const name = path.basename(abs);
+        const kind = fileKind(name);
+        let words = null;
+        let chars = null;
+        if (kind === 'md' || kind === 'txt') {
+          try {
+            const content = readFileSync(abs, 'utf8');
+            words = (content.match(/\S+/g) || []).length;
+            chars = content.length;
+          } catch {
+            /* unreadable right now — reading stats stay null */
+          }
+        }
+        const lastCommit = await lastCommitFor(rootAbs, cleanRel);
+        sendJson(res, 200, {
+          path: cleanRel,
+          name,
+          ext: path.extname(abs).toLowerCase(),
+          kind,
+          size: st.size,
+          mtime: st.mtimeMs,
+          words,
+          chars,
+          lastCommit,
+        });
+        return;
+      }
+
+      if (pathname === '/api/history') {
+        const rel = url.searchParams.get('p');
+        const abs = safeResolve(rel);
+        if (!abs) {
+          sendJson(res, 403, { error: 'path outside root' });
+          return;
+        }
+        let history;
+        try {
+          history = await fileHistory(rootAbs, rel.replace(/\\/g, '/'));
+        } catch {
+          sendJson(res, 500, { error: 'git failed' });
+          return;
+        }
+        if (!history) {
+          sendJson(res, 200, { git: false, commits: [], truncated: false });
+          return;
+        }
+        sendJson(res, 200, { git: true, commits: history.commits, truncated: history.truncated });
+        return;
+      }
+
+      if (pathname === '/api/version') {
+        const rel = url.searchParams.get('p');
+        const abs = safeResolve(rel);
+        if (!abs) {
+          sendJson(res, 403, { error: 'path outside root' });
+          return;
+        }
+        const ref = url.searchParams.get('ref');
+        if (!ref || !/^[0-9a-f]{7,40}$/i.test(ref)) {
+          sendJson(res, 400, { error: 'bad ref' });
+          return;
+        }
+        let version;
+        try {
+          version = await fileVersion(rootAbs, rel.replace(/\\/g, '/'), ref);
+        } catch (err) {
+          if (err instanceof VersionNotFound) {
+            sendJson(res, 404, { error: 'version not found' });
+          } else {
+            sendJson(res, 500, { error: 'git failed' });
+          }
+          return;
+        }
+        if (!version) {
+          sendJson(res, 404, { error: 'not a git repository' });
+          return;
+        }
+        const name = path.basename(abs);
+        const kind = fileKind(name);
+        if (url.searchParams.get('raw') === '1') {
+          const type = mimeType(abs);
+          res.writeHead(200, {
+            'Content-Type': type,
+            'Content-Length': version.buffer.length,
+            'Cache-Control': 'no-store',
+            'X-Content-Type-Options': 'nosniff',
+            ...(type === 'application/pdf' ? {} : { 'Content-Security-Policy': 'sandbox' }),
+          });
+          res.end(version.buffer);
+          return;
+        }
+        const isText = kind === 'md' || kind === 'txt';
+        const entry = version.entry;
+        sendJson(res, 200, {
+          path: rel.replace(/\\/g, '/'),
+          name,
+          ext: path.extname(abs).toLowerCase(),
+          kind,
+          size: version.buffer.length,
+          binary: !isText,
+          content: isText ? version.buffer.toString('utf8') : null,
+          ref: entry ? entry.sha : ref,
+          author: entry ? entry.author : null,
+          date: entry ? entry.date : null,
+          subject: entry ? entry.subject : null,
+          deleted: entry ? entry.status === 'D' : false,
         });
         return;
       }

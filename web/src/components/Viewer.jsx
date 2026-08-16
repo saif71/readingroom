@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { fetchFile, isImagePath, isPdfPath } from '../api';
+import { fetchFile, fetchVersion, isImagePath, isPdfPath, rawUrl, versionRawUrl } from '../api';
+import { formatDate } from '../format';
 import MarkdownView from './MarkdownView';
 import TextView from './TextView';
 import ImageView from './ImageView';
@@ -60,37 +61,85 @@ function Header({ name, path }) {
   );
 }
 
-export default function Viewer({ path, refreshKey, onNavigate }) {
+/** Sticky-context banner shown whenever a historical version is displayed. */
+function VersionBanner({ version, onBack }) {
+  const when = version.date ? formatDate(version.date) : 'an earlier commit';
+  return (
+    <div className="not-prose mb-6 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-amber-300/70 bg-amber-50 px-4 py-3 text-sm dark:border-amber-500/30 dark:bg-amber-500/10">
+      <svg className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" />
+        <polyline points="12 6 12 12 16 14" />
+      </svg>
+      <div className="min-w-0 flex-1">
+        <p className="font-medium text-amber-800 dark:text-amber-200">
+          Viewing version from {when}
+          {version.author ? <> by {version.author}</> : null}
+          {version.deleted && ' — the file was deleted in this commit, showing the last version'}
+        </p>
+        {version.subject && (
+          <p className="truncate text-xs text-amber-700/80 dark:text-amber-300/80" title={version.subject}>
+            {version.subject}
+          </p>
+        )}
+      </div>
+      <button
+        onClick={onBack}
+        className="shrink-0 rounded-full border border-amber-400/60 bg-white/70 px-3 py-1 text-xs font-medium text-amber-800 transition-colors hover:bg-white dark:border-amber-500/40 dark:bg-transparent dark:text-amber-200 dark:hover:bg-amber-500/10"
+      >
+        Back to latest
+      </button>
+    </div>
+  );
+}
+
+export default function Viewer({ path, refSha, refreshKey, onNavigate }) {
   const [state, setState] = useState({ status: 'loading' });
   const isImage = isImagePath(path);
   const isPdf = isPdfPath(path);
+  const isVersion = refSha != null;
 
   useEffect(() => {
-    if (isImage || isPdf) return; // binary kinds render straight from /api/raw, no fetch needed
+    // Binary kinds render straight from a URL — but a historical version
+    // still fetches the JSON form so the banner has author/date/subject.
+    if ((isImage || isPdf) && !isVersion) return;
     setState({ status: 'loading' });
     let alive = true;
-    fetchFile(path)
+    const load = isVersion ? fetchVersion(path, refSha) : fetchFile(path);
+    load
       .then((file) => alive && setState({ status: 'ok', file }))
       .catch((e) => alive && setState({ status: 'error', message: e.message }));
     return () => {
       alive = false;
     };
-  }, [path, refreshKey, isImage, isPdf]);
+  }, [path, refreshKey, isImage, isPdf, isVersion, refSha]);
 
-  if (isImage) {
+  const sourceUrl = isVersion ? versionRawUrl(path, refSha) : rawUrl(path);
+
+  if (isImage || isPdf) {
+    if (isVersion && state.status === 'loading') {
+      return (
+        <Centered>
+          <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-neutral-300 border-t-sky-500" />
+        </Centered>
+      );
+    }
+    if (isVersion && state.status === 'error') {
+      return (
+        <Centered>
+          <p className="font-medium text-neutral-500 dark:text-neutral-300">{path}</p>
+          <p className="mt-1">{state.message}</p>
+        </Centered>
+      );
+    }
     return (
       <div className="mx-auto max-w-4xl px-6 py-8 sm:px-10">
+        {isVersion && <VersionBanner version={state.file} onBack={() => onNavigate(path)} />}
         <Header name={path.split('/').pop()} path={path} />
-        <ImageView path={path} refreshKey={refreshKey} />
-      </div>
-    );
-  }
-
-  if (isPdf) {
-    return (
-      <div className="mx-auto max-w-5xl px-6 py-8 sm:px-10">
-        <Header name={path.split('/').pop()} path={path} />
-        <PdfView path={path} refreshKey={refreshKey} />
+        {isImage ? (
+          <ImageView src={sourceUrl} alt={path.split('/').pop()} reloadKey={isVersion ? 0 : refreshKey} />
+        ) : (
+          <PdfView path={path} src={sourceUrl} isVersion={isVersion} reloadKey={isVersion ? 0 : refreshKey} />
+        )}
       </div>
     );
   }
@@ -113,10 +162,11 @@ export default function Viewer({ path, refreshKey, onNavigate }) {
   }
 
   const { file } = state;
-  const [meta, body] = file.kind === 'md' ? splitFrontmatter(file.content) : [null, file.content];
+  const [meta, body] = file.kind === 'md' ? splitFrontmatter(file.content ?? '') : [null, file.content ?? ''];
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-8 sm:px-10">
+      {isVersion && <VersionBanner version={file} onBack={() => onNavigate(path)} />}
       <Header name={file.name} path={file.path} />
       {meta && Object.keys(meta).length > 0 && <Frontmatter meta={meta} />}
       {file.kind === 'md' ? (

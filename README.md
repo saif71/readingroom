@@ -1,4 +1,4 @@
-# readingroom - Zero-config doc browser for your codebase.
+# Zero-config doc browser for your codebase.
 
 ![cover](https://raw.githubusercontent.com/saif71/readingroom/main/cover.png)
 
@@ -8,7 +8,7 @@ One command, and every `.md`, `.txt`, image, and PDF file in your project is bro
 npx readingroom
 ```
 
-Codebases are drowning in documentation: READMEs, design docs, agent instructions, plans, notes, changelogs. Editors are great at code, but docs get buried in nested folders and drowned out by source files. `readingroom` shows _only_ the files you care about - a folder tree with per-folder counts on the left, preview on the right.
+Codebases are drowning in documentation: READMEs, design docs, agent instructions, plans, notes, changelogs. Editors are great at code, but docs get buried in nested folders and drowned out by source files. `readingroom` shows _only_ the files you care about - a folder tree  on the left, preview on the right.
 
 ## What you get
 
@@ -21,7 +21,7 @@ Codebases are drowning in documentation: READMEs, design docs, agent instruction
 - **Live reload** - files created, edited, or deleted by you (or your AI agents) appear instantly
 - **Deep-linkable URLs** - `/view/docs/plan.md` works on reload.
 - **Relative links work** - links between markdown files open in the viewer; images referenced by docs are served
-- **Dark + light mode** following your OS preference
+- **Dark + light mode** following your or OS preference
 
 ## What it shows (and skips)
 

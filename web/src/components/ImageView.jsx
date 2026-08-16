@@ -1,7 +1,6 @@
 import { useState } from 'react';
-import { rawUrl } from '../api';
 
-export default function ImageView({ path, refreshKey }) {
+export default function ImageView({ src, alt, reloadKey = 0 }) {
   const [failed, setFailed] = useState(false);
 
   if (failed) {
@@ -10,9 +9,9 @@ export default function ImageView({ path, refreshKey }) {
   return (
     <div className="flex justify-center rounded-lg bg-neutral-100 p-4 dark:bg-neutral-900">
       <img
-        key={`${path}:${refreshKey}`}
-        src={rawUrl(path)}
-        alt={path.split('/').pop()}
+        key={`${src}:${reloadKey}`}
+        src={src}
+        alt={alt}
         onError={() => setFailed(true)}
         className="max-w-full rounded-md"
       />

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Tree from "./Tree";
+import Segmented from "./Segmented";
 import { fuzzyMatch } from "../fuzzy";
 import { useTheme } from "../theme";
 
@@ -51,37 +52,6 @@ const THEMES = [
   { id: "light", label: "Light" },
   { id: "dark", label: "Dark" },
 ];
-
-/** iOS-style segmented control: recessed track with one raised pill per option. */
-function Segmented({ label, options, value, onSelect }) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className="w-16 shrink-0 whitespace-nowrap text-xs font-medium text-neutral-500 dark:text-neutral-400">
-        {label}
-      </span>
-      <div
-        className="flex flex-1 rounded-full bg-neutral-200/70 p-0.5 dark:bg-neutral-800 border dark:border-zinc-700 border-zinc-300"
-        role="group"
-        aria-label={label}
-      >
-        {options.map((option) => (
-          <button
-            key={option.id}
-            onClick={() => onSelect(option.id)}
-            aria-pressed={value === option.id}
-            className={`flex-1 rounded-full px-2 py-1 text-xs font-medium transition-colors ${
-              value === option.id
-                ? "bg-white text-neutral-900 shadow-sm dark:bg-neutral-600 dark:text-white"
-                : "text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200"
-            }`}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 export default function Sidebar({ tree, selected, onSelect }) {
   const [query, setQuery] = useState("");
