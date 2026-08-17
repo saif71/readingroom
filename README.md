@@ -8,7 +8,7 @@ One command, and every `.md`, `.txt`, image, and PDF file in your project is bro
 npx readingroom
 ```
 
-Codebases are drowning in documentation: READMEs, design docs, agent instructions, plans, notes, changelogs. Editors are great at code, but docs get buried in nested folders and drowned out by source files. `readingroom` shows _only_ the files you care about - a folder tree  on the left, preview on the right.
+Codebases are drowning in documentation: READMEs, design docs, agent instructions, plans, notes, changelogs. Editors are great at code, but docs get buried in nested folders and drowned out by source files. `readingroom` shows _only_ the files you care about - a folder tree on the left, preview on the right.
 
 ## What you get
 
@@ -33,6 +33,10 @@ It stays out of your way:
 - `node_modules`, `.git`, `dist`, `build`, `out`, `.next`, `target`, `coverage`, and friends are always skipped
 - Symlinks are not followed; there is no file size limit - if your browser can handle it, it gets listed
 - It is strictly **read-only** - readingroom never writes to your project
+
+## Demo
+
+<iframe width="800" height="450" src="https://www.youtube.com/embed/mOOgsZkM8pA?si=fvcFuyWEqlCaquZD" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
 
 ## CLI
 
