@@ -13,18 +13,18 @@ Codebases are drowning in documentation: READMEs, design docs, agent instruction
 ## What you get
 
 - **Sidebar tree** of every `.md`, `.txt`, image, and PDF file, with document counts per folder.
-- **File-type filter** under the search box - All / Markdown / Text / Images / PDF with live counts.
+- **File-type filter** - chips under the search box narrow the list to Markdown, text, images, or PDF (only types your project actually has appear), each with a live count.
 - **Rendered markdown** - GitHub-flavored (tables, task lists), syntax-highlighted code blocks, collapsed YAML frontmatter; `.txt` files shown as plain text
 - **Images** - `png`, `jpg`, `jpeg`, `webp`, `gif`, `avif`, and `svg` render right in the viewer
 - **PDFs** - rendered by your browser's built-in viewer, with an "Open in system viewer" fallback for browsers that can't display PDFs inline
 - **Download** - a download button next to every open file saves it to your computer; if you're viewing an older version from the History panel, you get that exact version
 - **File details & history** - a side panel shows the essentials at a glance (size, word count, reading time, who last edited the file), plus a History tab listing every saved change - click one to view the file as it was back then
-- **Search** - press `/` and type
+- **Filter by name** - press `/` and start typing
 - **Live reload** - files created, edited, or deleted by you (or your AI agents) appear instantly
-- **Deep-linkable URLs** - `/view/docs/plan.md` works on reload.
+- **Deep-linkable URLs** - `/view/docs/plan.md` works on reload
 - **Relative links work** - links between markdown files open in the viewer; images referenced by docs are served
-- **Dark + light mode** following your or OS preference
-- **Read on your phone** - a QR code in the sidebar pairs your phone over Wi-Fi, or through a private tunnel when you're on a different network
+- **Dark + light mode** - follows your OS setting, or pick your own
+- **Read on your phone** - scan a QR code and keep reading on your phone, on the same Wi-Fi or from anywhere
 
 ## What it shows (and skips)
 
@@ -39,7 +39,7 @@ It stays out of your way:
 
 ## Demo
 
-[On Youtube](https://youtu.be/mOOgsZkM8pA)
+[Watch the demo on YouTube](https://youtu.be/mOOgsZkM8pA)
 
 ## File history and downloads
 
@@ -47,7 +47,7 @@ It stays out of your way:
 
 Open a file and the panel on the right tells you about it: how big it is, how long it takes to read, and - if your project uses git - who last touched it. The **History** tab goes further back in time: every saved change is listed, and clicking one shows you the file exactly as it was at that point.
 
-The download button in the viewer header always saves what you're looking at - open the current file and you get the current version, open a version from History and you get that one.
+The download button next to the file name at the top always saves what you're looking at - open the current file and you get the current version, open a version from History and you get that one.
 
 ## CLI
 
