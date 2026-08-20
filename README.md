@@ -17,6 +17,7 @@ Codebases are drowning in documentation: READMEs, design docs, agent instruction
 - **Rendered markdown** - GitHub-flavored (tables, task lists), syntax-highlighted code blocks, collapsed YAML frontmatter; `.txt` files shown as plain text
 - **Images** - `png`, `jpg`, `jpeg`, `webp`, `gif`, `avif`, and `svg` render right in the viewer
 - **PDFs** - rendered by your browser's built-in viewer, with an "Open in system viewer" fallback for browsers that can't display PDFs inline
+- **Download** - grab any viewed file from the viewer header; when viewing a historical version, the download is that version under the file's name at the time
 - **Search** - press `/` and type
 - **Live reload** - files created, edited, or deleted by you (or your AI agents) appear instantly
 - **Deep-linkable URLs** - `/view/docs/plan.md` works on reload.

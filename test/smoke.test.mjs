@@ -45,6 +45,7 @@ write('.github/workflows/ci.md', '# CI\n');
 write('nested/keep.md', 'kept\n');
 write('nested/.gitignore', 'local.md\n');
 write('nested/local.md', 'ignored by nested gitignore\n');
+write('notas-日本語.md', 'notas en japonés\n');
 write('.gitignore', 'ignored/\n*.gen.md\n');
 write('ignored/secret.md', 'ignored dir\n');
 write('notes.gen.md', 'ignored glob\n');
@@ -70,6 +71,7 @@ const EXPECTED = [
   'img.png',
   'logo.svg',
   'nested/keep.md',
+  'notas-日本語.md',
   'photo.JPG',
   'pic.webp',
 ];
@@ -141,8 +143,26 @@ try {
       rawRes.ok &&
         rawRes.headers.get('content-type') === 'image/png' &&
         rawRes.headers.get('content-security-policy') === 'sandbox' &&
-        rawRes.headers.get('x-content-type-options') === 'nosniff',
+        rawRes.headers.get('x-content-type-options') === 'nosniff' &&
+        rawRes.headers.get('content-disposition') === null,
       `ct=${rawRes.headers.get('content-type')}`
+    );
+
+    // 7b. download=1 switches the raw response to an attachment download.
+    const dlRes = await fetch(`${base}/api/raw?p=${encodeURIComponent('README.md')}&download=1`);
+    check(
+      'download=1 sets attachment content-disposition',
+      dlRes.ok &&
+        dlRes.headers.get('content-disposition') === `attachment; filename="README.md"; filename*=UTF-8''README.md`,
+      `cd=${dlRes.headers.get('content-disposition')}`
+    );
+
+    const uniDlRes = await fetch(`${base}/api/raw?p=${encodeURIComponent('notas-日本語.md')}&download=1`);
+    const uniCd = uniDlRes.headers.get('content-disposition') || '';
+    check(
+      'unicode filenames keep their name via RFC 5987',
+      uniDlRes.ok && uniCd.includes('filename="notas-___.md"') && uniCd.includes(`filename*=UTF-8''notas-`),
+      `cd=${uniCd}`
     );
 
     // 8. Raw PDF: correct MIME, exempt from CSP sandbox (built-in viewers).
@@ -350,6 +370,13 @@ if (!gitAvailable) {
       );
       const pjson = await (await fetch(`${gbase}/api/version?p=pic.png&ref=${shaBySubject['add pic']}`)).json();
       check('json version of a binary has null content but keeps meta', pjson.binary === true && pjson.content === null && pjson.subject === 'add pic');
+
+      const vdlRes = await fetch(`${gbase}/api/version?p=${encodeURIComponent('guide.md')}&ref=${shaBySubject['add doc']}&raw=1&download=1`);
+      check(
+        'version download uses the rename-aware historical filename',
+        vdlRes.ok && (vdlRes.headers.get('content-disposition') || '').includes('filename="doc.md"'),
+        `cd=${vdlRes.headers.get('content-disposition')}`
+      );
     } finally {
       await gapp.close();
     }

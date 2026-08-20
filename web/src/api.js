@@ -66,6 +66,14 @@ export function rawUrl(path) {
   return `/api/raw?p=${encodeURIComponent(path)}`;
 }
 
+export function downloadUrl(path) {
+  return `${rawUrl(path)}&download=1`;
+}
+
+export function versionDownloadUrl(path, ref) {
+  return `${versionRawUrl(path, ref)}&download=1`;
+}
+
 export function viewUrl(path) {
   return '/view/' + path.split('/').map(encodeURIComponent).join('/');
 }

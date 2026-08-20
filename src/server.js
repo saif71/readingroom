@@ -36,6 +36,15 @@ function mimeType(file) {
   return MIME[path.extname(file).toLowerCase()] || 'application/octet-stream';
 }
 
+/**
+ * RFC 6266 Content-Disposition for a download filename: an ASCII-only
+ * `filename` fallback plus an RFC 5987 `filename*` carrying the real name.
+ */
+function contentDisposition(name) {
+  const fallback = name.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(name)}`;
+}
+
 function sendJson(res, status, body) {
   const data = JSON.stringify(body);
   res.writeHead(status, {
@@ -411,6 +420,12 @@ export async function startServer({
             'Cache-Control': 'no-store',
             'X-Content-Type-Options': 'nosniff',
             ...(type === 'application/pdf' ? {} : { 'Content-Security-Policy': 'sandbox' }),
+            ...(url.searchParams.get('download') === '1'
+              // entry.path is the rename-aware name at this commit; refs hit
+              // outside the walked history have no entry and fall back to the
+              // current name.
+              ? { 'Content-Disposition': contentDisposition(path.basename(version.entry?.path || rel)) }
+              : {}),
           });
           res.end(version.buffer);
           return;
@@ -461,6 +476,9 @@ export async function startServer({
           // exempt: some browsers refuse to run their built-in PDF viewer on
           // a response delivered under CSP sandbox.
           ...(type === 'application/pdf' ? {} : { 'Content-Security-Policy': 'sandbox' }),
+          ...(url.searchParams.get('download') === '1'
+            ? { 'Content-Disposition': contentDisposition(path.basename(abs)) }
+            : {}),
         });
         createReadStream(abs).pipe(res);
         return;
