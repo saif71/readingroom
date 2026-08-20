@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn } from "node:child_process";
 import {
   chmodSync,
   existsSync,
@@ -8,22 +8,23 @@ import {
   rmSync,
   statSync,
   writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
-import { gunzipSync } from 'node:zlib';
+} from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { gunzipSync } from "node:zlib";
 
 // Pinning matters: a downloaded binary's `--version` output must match this
 // string, otherwise the tunnel refuses to start.
-const CLOUDFLARED_VERSION = '2026.8.2';
-const RELEASE_BASE = 'https://github.com/cloudflare/cloudflared/releases/download';
+const CLOUDFLARED_VERSION = "2026.8.2";
+const RELEASE_BASE =
+  "https://github.com/cloudflare/cloudflared/releases/download";
 
 const PLATFORM_ASSETS = {
-  'darwin-arm64': { file: 'cloudflared-darwin-arm64.tgz', archive: 'tgz' },
-  'darwin-x64': { file: 'cloudflared-darwin-amd64.tgz', archive: 'tgz' },
-  'linux-x64': { file: 'cloudflared-linux-amd64', archive: null },
-  'linux-arm64': { file: 'cloudflared-linux-arm64', archive: null },
-  'win32-x64': { file: 'cloudflared-windows-amd64.exe', archive: null },
+  "darwin-arm64": { file: "cloudflared-darwin-arm64.tgz", archive: "tgz" },
+  "darwin-x64": { file: "cloudflared-darwin-amd64.tgz", archive: "tgz" },
+  "linux-x64": { file: "cloudflared-linux-amd64", archive: null },
+  "linux-arm64": { file: "cloudflared-linux-arm64", archive: null },
+  "win32-x64": { file: "cloudflared-windows-amd64.exe", archive: null },
 };
 
 const URL_TIMEOUT_MS = 30_000;
@@ -44,19 +45,25 @@ export function downloadUrl(platformKey = currentPlatformKey()) {
 }
 
 export function cacheDir() {
-  if (process.platform === 'win32') {
+  if (process.platform === "win32") {
     return path.join(
-      process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || tmpdir(), 'AppData', 'Local'),
-      'readingroom',
-      'cache',
+      process.env.LOCALAPPDATA ||
+        path.join(process.env.USERPROFILE || tmpdir(), "AppData", "Local"),
+      "readingroom",
+      "cache",
     );
   }
-  if (process.platform === 'darwin') {
-    return path.join(process.env.HOME || tmpdir(), 'Library', 'Caches', 'readingroom');
+  if (process.platform === "darwin") {
+    return path.join(
+      process.env.HOME || tmpdir(),
+      "Library",
+      "Caches",
+      "readingroom",
+    );
   }
   return path.join(
     process.env.XDG_CACHE_HOME || process.env.HOME || tmpdir(),
-    process.env.XDG_CACHE_HOME ? 'readingroom' : '.cache/readingroom',
+    process.env.XDG_CACHE_HOME ? "readingroom" : ".cache/readingroom",
   );
 }
 
@@ -66,8 +73,12 @@ export function untarSingleFile(tar) {
   while (offset + 512 <= tar.length) {
     const header = tar.subarray(offset, offset + 512);
     if (header.every((b) => b === 0)) break;
-    const name = header.subarray(0, 100).toString('utf8').replace(/\0.*$/, '');
-    const sizeField = header.subarray(124, 136).toString('utf8').replace(/\0.*$/, '').trim();
+    const name = header.subarray(0, 100).toString("utf8").replace(/\0.*$/, "");
+    const sizeField = header
+      .subarray(124, 136)
+      .toString("utf8")
+      .replace(/\0.*$/, "")
+      .trim();
     const size = parseInt(sizeField, 8) || 0;
     const type = header[156];
     const dataStart = offset + 512;
@@ -77,31 +88,31 @@ export function untarSingleFile(tar) {
     }
     offset = dataStart + Math.ceil(size / 512) * 512;
   }
-  throw new Error('no regular file found in tar archive');
+  throw new Error("no regular file found in tar archive");
 }
 
 function spawnCapture(bin, args, timeoutMs = 10_000) {
   return new Promise((resolve) => {
     let done = false;
-    let out = '';
-    const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    let out = "";
+    const child = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
     const timer = setTimeout(() => {
       if (!done) {
         done = true;
-        child.kill('SIGKILL');
+        child.kill("SIGKILL");
         resolve(null);
       }
     }, timeoutMs);
-    child.stdout.on('data', (d) => (out += d));
-    child.stderr.on('data', (d) => (out += d));
-    child.on('error', () => {
+    child.stdout.on("data", (d) => (out += d));
+    child.stderr.on("data", (d) => (out += d));
+    child.on("error", () => {
       if (!done) {
         done = true;
         clearTimeout(timer);
         resolve(null);
       }
     });
-    child.on('close', () => {
+    child.on("close", () => {
       if (!done) {
         done = true;
         clearTimeout(timer);
@@ -112,7 +123,7 @@ function spawnCapture(bin, args, timeoutMs = 10_000) {
 }
 
 export async function binaryVersion(binPath) {
-  const out = await spawnCapture(binPath, ['--version']);
+  const out = await spawnCapture(binPath, ["--version"]);
   if (!out) return null;
   const m = out.match(/cloudflared version ([0-9][^\s)]*)/i);
   return m ? m[1] : null;
@@ -120,7 +131,7 @@ export async function binaryVersion(binPath) {
 
 /**
  * Make sure a working cloudflared binary exists in the cache dir, downloading
- * it on first use (~30MB, one time). Returns its path. `onProgress({ phase,
+ * it on first use (one time). Returns its path. `onProgress({ phase,
  * bytes, total })` reports download progress; total is null when the response
  * has no content-length.
  */
@@ -130,7 +141,10 @@ export async function ensureCloudflared({ onProgress } = {}) {
     throw new Error(`no cloudflared build for ${currentPlatformKey()}`);
   }
   const dir = cacheDir();
-  const binPath = path.join(dir, `cloudflared-${CLOUDFLARED_VERSION}-${currentPlatformKey()}`);
+  const binPath = path.join(
+    dir,
+    `cloudflared-${CLOUDFLARED_VERSION}-${currentPlatformKey()}`,
+  );
 
   if (existsSync(binPath) && statSync(binPath).size > 0) {
     const version = await binaryVersion(binPath);
@@ -141,32 +155,32 @@ export async function ensureCloudflared({ onProgress } = {}) {
 
   mkdirSync(dir, { recursive: true });
   const res = await fetch(downloadUrl(), {
-    redirect: 'follow',
+    redirect: "follow",
     signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
   });
   if (!res.ok) {
     throw new Error(`could not download cloudflared (HTTP ${res.status})`);
   }
-  const total = Number(res.headers.get('content-length')) || null;
+  const total = Number(res.headers.get("content-length")) || null;
   let received = 0;
   const chunks = [];
   for await (const chunk of res.body) {
     chunks.push(chunk);
     received += chunk.length;
-    onProgress?.({ phase: 'downloading', bytes: received, total });
+    onProgress?.({ phase: "downloading", bytes: received, total });
   }
   let buffer = Buffer.concat(chunks);
-  if (asset.archive === 'tgz') {
+  if (asset.archive === "tgz") {
     buffer = untarSingleFile(gunzipSync(buffer));
   }
 
   // Write to a temp dir and rename into place so a killed download never
   // leaves a half-written binary that looks cached.
-  const tmp = mkdtempSync(path.join(dir, '.download-'));
+  const tmp = mkdtempSync(path.join(dir, ".download-"));
   try {
-    const tmpPath = path.join(tmp, 'cloudflared');
+    const tmpPath = path.join(tmp, "cloudflared");
     writeFileSync(tmpPath, buffer);
-    if (process.platform !== 'win32') chmodSync(tmpPath, 0o755);
+    if (process.platform !== "win32") chmodSync(tmpPath, 0o755);
     renameSync(tmpPath, binPath);
   } finally {
     rmSync(tmp, { recursive: true, force: true });
@@ -178,7 +192,7 @@ export async function ensureCloudflared({ onProgress } = {}) {
     throw new Error(
       version
         ? `downloaded cloudflared reports version ${version}, expected ${CLOUDFLARED_VERSION}`
-        : 'downloaded cloudflared binary failed to run',
+        : "downloaded cloudflared binary failed to run",
     );
   }
   return binPath;
@@ -200,48 +214,52 @@ export function parseTunnelUrl(text) {
  * `onProgress` mirrors ensureCloudflared. `onUnexpectedExit(message)` fires if
  * the child dies on its own after a successful start (network drop etc.).
  */
-export async function startQuickTunnel({ targetPort, onProgress, onUnexpectedExit }) {
+export async function startQuickTunnel({
+  targetPort,
+  onProgress,
+  onUnexpectedExit,
+}) {
   const binPath = await ensureCloudflared({ onProgress });
-  onProgress?.({ phase: 'starting' });
+  onProgress?.({ phase: "starting" });
 
   const child = spawn(
     binPath,
-    ['tunnel', '--url', `http://127.0.0.1:${targetPort}`, '--no-autoupdate'],
-    { stdio: ['ignore', 'ignore', 'pipe'] },
+    ["tunnel", "--url", `http://127.0.0.1:${targetPort}`, "--no-autoupdate"],
+    { stdio: ["ignore", "ignore", "pipe"] },
   );
 
   let stopped = false;
   let urlFound = false;
-  let stderr = '';
+  let stderr = "";
 
   const stop = () =>
     new Promise((resolve) => {
       if (stopped) return resolve();
       stopped = true;
-      const killTimer = setTimeout(() => child.kill('SIGKILL'), 3000);
-      child.once('exit', () => {
+      const killTimer = setTimeout(() => child.kill("SIGKILL"), 3000);
+      child.once("exit", () => {
         clearTimeout(killTimer);
         resolve();
       });
-      child.kill('SIGTERM');
+      child.kill("SIGTERM");
     });
 
   return await new Promise((resolve, reject) => {
     const urlTimer = setTimeout(() => {
-      reject(new Error('tunnel did not come up in time'));
+      reject(new Error("tunnel did not come up in time"));
       stop();
     }, URL_TIMEOUT_MS);
 
-    child.on('error', (err) => {
+    child.on("error", (err) => {
       clearTimeout(urlTimer);
       reject(new Error(`could not run cloudflared: ${err.message}`));
     });
 
     const describeExit = (code, signal) =>
-      `${signal || `code ${code}`}${stderr.trim() ? ` — ${stderr.slice(-400).trim()}` : ''}`;
+      `${signal || `code ${code}`}${stderr.trim() ? ` — ${stderr.slice(-400).trim()}` : ""}`;
 
-    child.stderr.on('data', (chunk) => {
-      if (stderr.length < 8_000) stderr += chunk.toString('utf8');
+    child.stderr.on("data", (chunk) => {
+      if (stderr.length < 8_000) stderr += chunk.toString("utf8");
       if (urlFound) return;
       const url = parseTunnelUrl(stderr);
       if (url) {
@@ -257,13 +275,19 @@ export async function startQuickTunnel({ targetPort, onProgress, onUnexpectedExi
       }
     });
 
-    child.on('exit', (code, signal) => {
+    child.on("exit", (code, signal) => {
       clearTimeout(urlTimer);
       if (stopped) return;
       if (urlFound) {
-        onUnexpectedExit?.(`cloudflared stopped (${describeExit(code, signal)})`);
+        onUnexpectedExit?.(
+          `cloudflared stopped (${describeExit(code, signal)})`,
+        );
       } else {
-        reject(new Error(`cloudflared exited before the tunnel was ready (${describeExit(code, signal)})`));
+        reject(
+          new Error(
+            `cloudflared exited before the tunnel was ready (${describeExit(code, signal)})`,
+          ),
+        );
       }
     });
   });

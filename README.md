@@ -57,10 +57,11 @@ The server binds to `127.0.0.1` only - your files are never exposed to the netwo
 
 ## Read on your phone
 
+![cover](/docs/remote-access.png)
 Click the phone icon in the sidebar for a QR code:
 
 - **On this Wi-Fi** - scan and you're reading. Nothing leaves your network.
-- **From anywhere** - "Start tunnel" creates a private `trycloudflare.com` URL that works from any network. The cloudflared helper (~30 MB) downloads once on first use and is cached; there is nothing to install or sign up for.
+- **From anywhere** - "Start tunnel" creates a private `trycloudflare.com` URL that works from any network. The cloudflared helper downloads once on first use and is cached for faster future runs; there is nothing to install or sign up for.
 
 Both ways are guarded by a per-run access code (part of the QR URL) - anyone without it gets refused. Sharing stops when you stop it in the dialog or close readingroom, and the code changes on every run. Tunnels are routed through Cloudflare's free quick-tunnel service, so they need internet access and are best-effort, not guaranteed uptime.
 

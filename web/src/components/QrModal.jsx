@@ -4,9 +4,9 @@ import { formatBytes } from "../format";
 import { qrMatrix } from "../vendor/qr";
 
 const PRIMARY_BTN =
-  "rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-100 disabled:cursor-default disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800";
+  "rounded-md border border-neutral-200 px-3 py-1.5 text-sm font-medium text-neutral-700 transition-colors  disabled:cursor-default disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-200 hover:bg-neutral-800 flex gap-2 items-center cursor-pointer";
 const SUBTLE_BTN =
-  "text-xs text-neutral-500 transition-colors hover:text-neutral-800 disabled:opacity-50 dark:text-neutral-400 dark:hover:text-neutral-200";
+  "text-sm text-neutral-500 transition-colors hover:text-neutral-800 disabled:opacity-50 dark:text-neutral-400 dark:hover:text-neutral-200";
 
 function QrSvg({ value }) {
   const matrix = useMemo(() => qrMatrix(value), [value]);
@@ -48,7 +48,7 @@ function CopyButton({ text }) {
   return (
     <button
       onClick={copy}
-      className="shrink-0 text-xs text-sky-600 transition-colors hover:text-sky-500 dark:text-sky-400 dark:hover:text-sky-300"
+      className="shrink-0 text-sm text-sky-600 transition-colors hover:text-sky-500 dark:text-sky-400 dark:hover:text-sky-300"
     >
       {copied ? "Copied" : "Copy"}
     </button>
@@ -58,7 +58,7 @@ function CopyButton({ text }) {
 function UrlRow({ url }) {
   return (
     <div className="flex items-center gap-2 rounded-md border border-neutral-200 bg-white px-2.5 py-1.5 dark:border-neutral-700 dark:bg-neutral-900">
-      <span className="min-w-0 flex-1 truncate font-mono text-xs text-neutral-600 dark:text-neutral-300">
+      <span className="min-w-0 flex-1 truncate font-mono text-sm text-neutral-600 dark:text-neutral-300">
         {url}
       </span>
       <CopyButton text={url} />
@@ -66,14 +66,69 @@ function UrlRow({ url }) {
   );
 }
 
-function Section({ title, children }) {
+function Section({ title, icon, children }) {
   return (
-    <section className="space-y-2.5">
-      <h3 className="text-xs font-medium uppercase tracking-wider text-neutral-400">
+    <section className="space-y-2.5 bg-white p-4 rounded-md shadow-sm dark:bg-neutral-900">
+      <h3 className="flex items-center gap-1.5 text-base font-medium uppercase text-neutral-400">
+        {icon}
         {title}
       </h3>
       {children}
     </section>
+  );
+}
+
+function WifiIcon() {
+  return (
+    <svg
+      className="h-3.5 w-3.5"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M5 12.55a11 11 0 0 1 14.08 0" />
+      <path d="M1.42 9a16 16 0 0 1 21.16 0" />
+      <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
+      <path d="M12 20h.01" />
+    </svg>
+  );
+}
+
+function GlobeIcon() {
+  return (
+    <svg
+      className="h-3.5 w-3.5"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
+      <path d="M2 12h20" />
+    </svg>
+  );
+}
+
+function LockIcon() {
+  return (
+    <svg
+      className="mt-0.5 h-3.5 w-3.5 shrink-0"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
   );
 }
 
@@ -104,7 +159,7 @@ function DownloadProgress({ bytes, total }) {
 
 function TokenRow({ token }) {
   return (
-    <div className="flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400">
+    <div className="flex items-center gap-2 text-sm text-neutral-500 dark:text-neutral-400 hidden">
       <span>
         Access code:{" "}
         <code className="font-mono text-neutral-700 dark:text-neutral-200">
@@ -127,11 +182,12 @@ export default function QrModal({ onClose }) {
         const data = await fetchMobileStatus();
         if (alive) setState({ status: "ok", data });
       } catch (e) {
-        if (alive) setState((prev) =>
-          prev.status === "ok"
-            ? prev // transient hiccup — keep the last known status
-            : { status: "error", message: e.message },
-        );
+        if (alive)
+          setState((prev) =>
+            prev.status === "ok"
+              ? prev // transient hiccup — keep the last known status
+              : { status: "error", message: e.message },
+          );
       }
     };
     refresh();
@@ -168,7 +224,9 @@ export default function QrModal({ onClose }) {
   const data = state.status === "ok" ? state.data : null;
   const tunnel = data?.tunnel;
   const tunnelBusy =
-    tunnel?.state === "downloading" || tunnel?.state === "starting" || busy === "tunnel";
+    tunnel?.state === "downloading" ||
+    tunnel?.state === "starting" ||
+    busy === "tunnel";
 
   return (
     <div
@@ -178,15 +236,21 @@ export default function QrModal({ onClose }) {
       aria-label="Open on your phone"
     >
       <div
-        className="absolute inset-0 bg-black/40"
+        className="absolute inset-0 bg-black/40 backdrop-blur-xl"
         onClick={onClose}
         aria-hidden="true"
       />
       <div className="relative max-h-[85vh] w-full max-w-sm overflow-y-auto rounded-2xl border border-neutral-200 bg-zinc-100 p-4 shadow-xl dark:border-neutral-800 dark:bg-neutral-800">
-        <div className="flex items-center justify-between pb-3">
-          <h2 className="text-sm font-semibold tracking-tight">
-            Open on your phone
-          </h2>
+        <div className="flex items-start justify-between pb-3">
+          <div>
+            <h2 className="text-2xl font-semibold tracking-tight">
+              Open on your phone
+            </h2>
+            <p className="mt-0.5 text-sm text-neutral-500 dark:text-neutral-400">
+              Choose how your phone will connect.
+            </p>
+          </div>
+
           <button
             onClick={onClose}
             title="Close"
@@ -215,7 +279,7 @@ export default function QrModal({ onClose }) {
         {state.status === "error" && (
           <div className="space-y-1 py-8 text-center">
             <p className="text-sm text-rose-500">{state.message}</p>
-            <p className="text-xs text-neutral-400">
+            <p className="text-sm text-neutral-400">
               This needs the readingroom server that came with this UI.
             </p>
           </div>
@@ -223,19 +287,20 @@ export default function QrModal({ onClose }) {
 
         {data && (
           <div className="space-y-4">
-            <Section title="On this Wi-Fi">
+            <Section title="Same Wi-Fi" icon={<WifiIcon />}>
               {!data.lan.enabled ? (
                 <div className="space-y-2.5">
                   <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                    Share with devices on the same network. A per-run access
-                    code keeps it private.
+                    Fastest option when both devices are on the same network /
+                    same Wi-Fi.
                   </p>
                   <button
-                    className={PRIMARY_BTN}
+                    className={PRIMARY_BTN + " bg-cyan-800 text-white"}
                     disabled={busy === "lan"}
                     onClick={() => run("lan", () => setMobileLan(true))}
                   >
-                    Start sharing
+                    <WifiIcon />
+                    <span className="ml-1">Open on this Wi-Fi</span>
                   </button>
                 </div>
               ) : data.lan.urls.length === 0 ? (
@@ -255,7 +320,7 @@ export default function QrModal({ onClose }) {
               ) : (
                 <div className="space-y-2.5">
                   <QrSvg value={data.lan.urls[0]} />
-                  <p className="text-center text-xs text-neutral-400">
+                  <p className="text-center text-sm text-neutral-400">
                     Works only on this Wi-Fi
                   </p>
                   {data.lan.urls.slice(1).map((url) => (
@@ -273,21 +338,19 @@ export default function QrModal({ onClose }) {
               )}
             </Section>
 
-            <div className="border-t border-neutral-200 pt-4 dark:border-neutral-700" />
-
-            <Section title="From anywhere">
+            <Section title="Any network" icon={<GlobeIcon />}>
               {!tunnel || tunnel.state === "off" ? (
                 <div className="space-y-2.5">
                   <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                    Not on the same network? A private tunnel gives your phone
-                    secure access from anywhere.
+                    Using mobile data, another Wi-Fi, or connect remotely.
                   </p>
                   <button
-                    className={PRIMARY_BTN}
+                    className={PRIMARY_BTN + " bg-purple-800 text-white"}
                     disabled={tunnelBusy}
                     onClick={() => run("tunnel", () => setMobileTunnel(true))}
                   >
-                    Start tunnel
+                    <GlobeIcon />
+                    <span className="ml-1">Open from anywhere</span>
                   </button>
                 </div>
               ) : tunnel.state === "downloading" ? (
@@ -299,7 +362,7 @@ export default function QrModal({ onClose }) {
               ) : tunnel.state === "on" ? (
                 <div className="space-y-2.5">
                   <QrSvg value={tunnel.url} />
-                  <p className="text-center text-xs text-neutral-400">
+                  <p className="text-center text-sm text-neutral-400">
                     Works from any network
                   </p>
                   <UrlRow url={tunnel.url} />
@@ -326,19 +389,32 @@ export default function QrModal({ onClose }) {
                     <button
                       className={`${SUBTLE_BTN} self-center`}
                       disabled={tunnelBusy}
-                      onClick={() => run("tunnel", () => setMobileTunnel(false))}
+                      onClick={() =>
+                        run("tunnel", () => setMobileTunnel(false))
+                      }
                     >
                       Dismiss
                     </button>
                   </div>
                 </div>
               )}
-              <p className="text-xs leading-relaxed text-neutral-400">
-                Routed through Cloudflare's free quick-tunnel service (needs
-                internet). The helper (~30&nbsp;MB) downloads once and is
-                cached.
-              </p>
             </Section>
+            <div className="border-t border-neutral-200 my-4 dark:border-neutral-700" />
+
+            <p className="flex items-start gap-1.5 text-xs leading-relaxed text-neutral-400">
+              <LockIcon />
+              <span>
+                Uses a secure internet tunnel service from Cloudflare.{" "}
+                <a
+                  href="https://developers.cloudflare.com/tunnel/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-sky-600 underline-offset-2 hover:text-sky-500 hover:underline dark:text-sky-400 dark:hover:text-sky-300"
+                >
+                  Learn more
+                </a>
+              </span>
+            </p>
           </div>
         )}
       </div>
