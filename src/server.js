@@ -134,7 +134,8 @@ function lanIpv4Addresses() {
  *
  * Returns { server, port, url, root, tree(), liveReload, mobile, close() }.
  * `mobile` exposes the phone-access feature: { status(), enableLan(),
- * disableLan(), startTunnel(), stopTunnel() }.
+ * disableLan(), startTunnel(), stopTunnel() }. `startTunnelImpl` is
+ * injectable for tests.
  */
 export async function startServer({
   root,
@@ -143,6 +144,7 @@ export async function startServer({
   distDir,
   autoIncrementLimit = 100,
   openFile = openExternal,
+  startTunnelImpl = startQuickTunnel,
 }) {
   const rootAbs = path.resolve(root);
 
@@ -582,7 +584,11 @@ export async function startServer({
   // exemption because cloudflared's proxy also connects from 127.0.0.1.
   let lanServer = null;
   let lanHosts = new Set();
-  let lanState = { enabled: false, port: null, urls: [] };
+  // The mobile listener may run for the tunnel alone. `lanAdvertised` tracks
+  // what the user actually asked for: Wi-Fi sharing (and its QR) is only
+  // reported when started explicitly, never as a side effect of the tunnel.
+  let lanAdvertised = false;
+  let listener = { running: false, port: null, urls: [] };
   let tunnelState = { state: 'off', url: null, bytes: 0, total: null, error: null };
   let tunnelStop = null;
   let tunnelHost = null;
@@ -659,9 +665,9 @@ export async function startServer({
     return {
       token,
       lan: {
-        enabled: lanState.enabled,
-        port: lanState.port,
-        urls: lanState.urls.map(pair),
+        enabled: lanAdvertised,
+        port: listener.running ? listener.port : null,
+        urls: lanAdvertised ? listener.urls.map(pair) : [],
       },
       tunnel: {
         state: tunnelState.state,
@@ -673,28 +679,24 @@ export async function startServer({
     };
   }
 
-  async function enableLan() {
-    if (lanState.enabled) return;
+  // Bring the mobile listener up (idempotent). Silent by design: it is an
+  // implementation detail shared by Wi-Fi sharing and the tunnel.
+  async function startListener() {
+    if (listener.running) return;
     const server = http.createServer(mobileGuard);
     const actualPort = await listen(server, mobilePort, autoIncrementLimit, '0.0.0.0');
     const addresses = lanIpv4Addresses();
     lanServer = server;
     lanHosts = new Set(addresses);
-    lanState = {
-      enabled: true,
+    listener = {
+      running: true,
       port: actualPort,
       urls: addresses.map((ip) => `http://${ip}:${actualPort}`),
     };
-    if (addresses.length === 0) {
-      console.warn('readingroom: no network address found — phones must use the tunnel');
-    } else {
-      console.log(`readingroom: phone access on — ${lanState.urls[0]}/pair?t=${token}`);
-    }
   }
 
-  async function disableLan() {
-    await stopTunnel();
-    lanState = { enabled: false, port: null, urls: [] };
+  async function stopListener() {
+    listener = { running: false, port: null, urls: [] };
     lanHosts = new Set();
     const server = lanServer;
     lanServer = null;
@@ -705,7 +707,26 @@ export async function startServer({
       server.close();
       server.closeAllConnections?.();
     }
-    console.log('readingroom: phone access off');
+  }
+
+  async function enableLan() {
+    if (lanAdvertised) return;
+    await startListener();
+    lanAdvertised = true;
+    if (listener.urls.length === 0) {
+      console.warn('readingroom: no network address found — phones must use the tunnel');
+    } else {
+      console.log(`readingroom: phone access on — ${listener.urls[0]}/pair?t=${token}`);
+    }
+  }
+
+  async function disableLan() {
+    const wasAdvertised = lanAdvertised;
+    lanAdvertised = false;
+    // stopTunnel tears the listener down too when nothing else needs it.
+    await stopTunnel();
+    if (listener.running) await stopListener();
+    if (wasAdvertised) console.log('readingroom: phone access off');
   }
 
   function setTunnel(patch) {
@@ -713,16 +734,17 @@ export async function startServer({
   }
 
   // Kicks the work off and returns; progress and errors land in the tunnel
-  // state that GET /api/mobile reports.
+  // state that GET /api/mobile reports. The listener it needs comes up
+  // silently — Wi-Fi sharing is only reported when started explicitly.
   async function startTunnel() {
-    if (!lanState.enabled) await enableLan();
+    await startListener();
     if (tunnelState.state === 'on' || tunnelState.state === 'downloading' || tunnelState.state === 'starting') {
       return;
     }
     const gen = ++tunnelGen;
     setTunnel({ state: 'downloading', url: null, bytes: 0, total: null, error: null });
-    startQuickTunnel({
-      targetPort: lanState.port,
+    startTunnelImpl({
+      targetPort: listener.port,
       onProgress: (p) => {
         if (gen !== tunnelGen) return;
         if (p.phase === 'downloading') setTunnel({ state: 'downloading', bytes: p.bytes, total: p.total });
@@ -757,6 +779,8 @@ export async function startServer({
     tunnelStop = null;
     setTunnel({ state: 'off', url: null, error: null, bytes: 0, total: null });
     if (stop) await stop();
+    // If the listener only existed for the tunnel, bring the whole thing down.
+    if (!lanAdvertised && listener.running) await stopListener();
   }
 
   const server = http.createServer((req, res) => {

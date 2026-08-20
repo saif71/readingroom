@@ -557,6 +557,84 @@ try {
   check('mobile access tests run', false, err.message);
 }
 
+// --- Phone access: tunnel and Wi-Fi sharing are independent user actions ----
+//
+// Starting a tunnel must NOT report Wi-Fi sharing (no surprise QR while the
+// helper downloads), and stopping it must not tear down explicitly-started
+// sharing. Uses a fake tunnel so no network is involved.
+
+try {
+  const FAKE_HOST = 'fake-tunnel.example.trycloudflare.com';
+  const fakeTunnel = async ({ onProgress }) => {
+    onProgress?.({ phase: 'downloading', bytes: 10, total: 10 });
+    onProgress?.({ phase: 'starting' });
+    return { url: `https://${FAKE_HOST}`, host: FAKE_HOST, stop: async () => {} };
+  };
+  const fixture2 = mkdtempSync(path.join(tmpdir(), 'readingroom-split-'));
+  writeIn(fixture2, 'doc.md', 'split state\n');
+  const app2 = await startServer({
+    root: fixture2,
+    port: 0,
+    mobilePort: 0,
+    distDir: path.resolve('dist'),
+    openFile: async () => true,
+    startTunnelImpl: fakeTunnel,
+  });
+  const waitTunnel = async (pred, label) => {
+    for (let i = 0; i < 20; i++) {
+      const st = app2.mobile.status();
+      if (pred(st)) return st;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error('timed out waiting for ' + label);
+  };
+  try {
+    // Tunnel alone: listener runs silently, Wi-Fi sharing is NOT advertised.
+    await app2.mobile.startTunnel();
+    const on1 = await waitTunnel((st) => st.tunnel.state === 'on', 'tunnel on');
+    check(
+      'tunnel start does not advertise Wi-Fi sharing',
+      on1.lan.enabled === false && on1.lan.urls.length === 0 && on1.lan.port !== null && on1.tunnel.url === `https://${FAKE_HOST}/pair?t=${on1.token}`,
+      JSON.stringify({ lan: on1.lan, tunnel: on1.tunnel }),
+    );
+
+    // The tunnel hostname is allowed through and requires pairing as usual.
+    const viaTunnel = await fetch(`http://127.0.0.1:${on1.lan.port}/api/tree`, { headers: { Host: FAKE_HOST } });
+    check('tunnel host passes the allowlist but needs pairing', viaTunnel.status === 401, `status=${viaTunnel.status}`);
+    const paired = await fetch(`http://127.0.0.1:${on1.lan.port}/pair?t=${on1.token}`, { headers: { Host: FAKE_HOST }, redirect: 'manual' });
+    const cookie2 = (paired.headers.get('set-cookie') || '').split(';')[0];
+    const okTree = await fetch(`http://127.0.0.1:${on1.lan.port}/api/tree`, { headers: { Host: FAKE_HOST, Cookie: cookie2 } });
+    check('tunnel-host request works once paired', okTree.ok, `status=${okTree.status}`);
+
+    // Stopping the tunnel with sharing never started: everything goes down.
+    await app2.mobile.stopTunnel();
+    const off1 = await waitTunnel((st) => st.tunnel.state === 'off', 'tunnel off');
+    check('stopping an unshared tunnel tears the listener down', off1.tunnel.state === 'off' && off1.lan.enabled === false && off1.lan.port === null, JSON.stringify(off1.lan));
+
+    // Both explicitly started: stopping the tunnel keeps sharing alive.
+    await app2.mobile.enableLan();
+    await app2.mobile.startTunnel();
+    await waitTunnel((st) => st.tunnel.state === 'on', 'tunnel on again');
+    await app2.mobile.stopTunnel();
+    const off2 = await waitTunnel((st) => st.tunnel.state === 'off', 'tunnel off again');
+    check(
+      'stopping the tunnel keeps explicitly-started sharing alive',
+      off2.lan.enabled === true && off2.lan.port !== null && off2.lan.urls.length >= 1,
+      JSON.stringify(off2.lan),
+    );
+
+    // Stopping sharing takes the whole listener down (tunnel already off).
+    await app2.mobile.disableLan();
+    const off3 = app2.mobile.status();
+    check('stopping sharing tears everything down', off3.lan.enabled === false && off3.lan.port === null, JSON.stringify(off3.lan));
+  } finally {
+    await app2.close();
+  }
+  rmSync(fixture2, { recursive: true, force: true });
+} catch (err) {
+  check('split-state tests run', false, err.message);
+}
+
 failures = results.filter((r) => !r.ok).length;
 console.log(`\n${results.length - failures}/${results.length} passed`);
 process.exit(failures ? 1 : 0);

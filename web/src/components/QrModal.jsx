@@ -255,6 +255,9 @@ export default function QrModal({ onClose }) {
               ) : (
                 <div className="space-y-2.5">
                   <QrSvg value={data.lan.urls[0]} />
+                  <p className="text-center text-xs text-neutral-400">
+                    Works only on this Wi-Fi
+                  </p>
                   {data.lan.urls.slice(1).map((url) => (
                     <UrlRow key={url} url={url} />
                   ))}
@@ -296,6 +299,9 @@ export default function QrModal({ onClose }) {
               ) : tunnel.state === "on" ? (
                 <div className="space-y-2.5">
                   <QrSvg value={tunnel.url} />
+                  <p className="text-center text-xs text-neutral-400">
+                    Works from any network
+                  </p>
                   <UrlRow url={tunnel.url} />
                   <TokenRow token={data.token} />
                   <button
