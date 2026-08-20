@@ -60,6 +60,7 @@ export default function Sidebar({
   open,
   onToggleOpen,
   mobile,
+  onOpenQr,
 }) {
   const [query, setQuery] = useState("");
   const [kind, setKind] = useState("all");
@@ -184,6 +185,27 @@ export default function Sidebar({
             <path d="m13 9 3 3-3 3" />
           </svg>
         </button>
+        {onOpenQr && (
+          <button
+            onClick={onOpenQr}
+            title="Open on your phone"
+            aria-label="Open on your phone"
+            className="mt-1 rounded-md p-1.5 text-neutral-500 transition-colors hover:bg-neutral-200/60 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700/60 dark:hover:text-neutral-200"
+          >
+            <svg
+              className="h-4 w-4"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect width="14" height="20" x="5" y="2" rx="2" ry="2" />
+              <path d="M12 18h.01" />
+            </svg>
+          </button>
+        )}
       </aside>
     );
   }
@@ -210,11 +232,32 @@ export default function Sidebar({
           <span className="truncate text-xs text-neutral-400">
             {tree ? `${tree.count} files` : "…"}
           </span>
+          {onOpenQr && (
+            <button
+              onClick={onOpenQr}
+              title="Open on your phone"
+              aria-label="Open on your phone"
+              className="ml-auto shrink-0 rounded-md p-1 text-neutral-500 transition-colors hover:bg-neutral-200/60 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700/60 dark:hover:text-neutral-200"
+            >
+              <svg
+                className="h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <rect width="14" height="20" x="5" y="2" rx="2" ry="2" />
+                <path d="M12 18h.01" />
+              </svg>
+            </button>
+          )}
           <button
             onClick={() => onToggleOpen(false)}
             title="Hide file tree"
             aria-label="Hide file tree"
-            className="ml-auto shrink-0 rounded-md p-1 text-neutral-500 transition-colors hover:bg-neutral-200/60 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700/60 dark:hover:text-neutral-200"
+            className="shrink-0 rounded-md p-1 text-neutral-500 transition-colors hover:bg-neutral-200/60 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700/60 dark:hover:text-neutral-200"
           >
             <svg
               className="h-4 w-4"

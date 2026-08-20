@@ -3,6 +3,7 @@ import { fetchTree, subscribeTree, viewUrl, versionUrl, pathFromViewUrl } from "
 import Sidebar from "./components/Sidebar";
 import Viewer from "./components/Viewer";
 import Inspector from "./components/Inspector";
+import QrModal from "./components/QrModal";
 import { EmptyState, Welcome } from "./components/EmptyState";
 import useMediaQuery from "./useMediaQuery";
 
@@ -38,6 +39,7 @@ export default function App() {
   // Commit sha when a historical version is open (deep-linkable via ?ref=).
   const [refSha, setRefSha] = useState(refFromLocation);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [qrOpen, setQrOpen] = useState(false);
 
   const isMobile = useMediaQuery(MOBILE_QUERY);
   const [sidebarOpen, setSidebarOpen] = useState(
@@ -176,6 +178,7 @@ export default function App() {
           open={sidebarOpen}
           onToggleOpen={toggleSidebar}
           mobile={isMobile}
+          onOpenQr={() => setQrOpen(true)}
         />
         <main className="min-w-0 flex-1 overflow-y-auto bg-zinc-50 dark:bg-zinc-900 m-2 rounded-3xl sm:m-4">
           {tree && tree.count === 0 ? (
@@ -203,6 +206,7 @@ export default function App() {
           />
         )}
       </div>
+      {qrOpen && <QrModal onClose={() => setQrOpen(false)} />}
     </div>
   );
 }

@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import { startServer } from '../src/server.js';
+import { qrEncode, rsSyndromes, MAX_INPUT_BYTES } from '../web/src/vendor/qr.js';
+import { parseTunnelUrl, untarSingleFile } from '../src/tunnel.js';
 
 const results = [];
 function check(name, ok, detail = '') {
@@ -374,6 +376,185 @@ if (!gitAvailable) {
   } finally {
     rmSync(gitFixture, { recursive: true, force: true });
   }
+}
+
+// --- QR encoder ------------------------------------------------------------
+
+try {
+  const sample = 'http://192.168.1.42:9346/pair?t=A3fK9xQ2mB7wE5rT1yU8i';
+  const qr = qrEncode(sample);
+  check('qr picks the expected version for a LAN pair URL', qr.version === 4 && qr.size === 33, `v${qr.version} ${qr.size}x${qr.size}`);
+
+  const tiny = qrEncode('hello world');
+  check('qr picks v1 for a short input', tiny.version === 1 && tiny.size === 21, `v${tiny.version}`);
+
+  const maxPrefix = 'https://x.trycloudflare.com/pair?t=';
+  const maxText = maxPrefix + 'a'.repeat(MAX_INPUT_BYTES - maxPrefix.length);
+  check('qr max-capacity input is accepted at v7', qrEncode(maxText).version === 7);
+  let overflows = false;
+  try {
+    qrEncode(maxText + 'x');
+  } catch {
+    overflows = true;
+  }
+  check('qr rejects input beyond capacity', overflows && MAX_INPUT_BYTES === 122);
+
+  // Finder pattern: dark 3x3 core, light ring, dark border (dist ≤ 3).
+  const finderOk = (m, cx, cy) => {
+    for (let dy = -3; dy <= 3; dy++) {
+      for (let dx = -3; dx <= 3; dx++) {
+        const dist = Math.max(Math.abs(dx), Math.abs(dy));
+        if (m[cy + dy][cx + dx] !== (dist !== 2)) return false;
+      }
+    }
+    return true;
+  };
+  check(
+    'qr matrix has the three finder patterns',
+    finderOk(qr.matrix, 3, 3) && finderOk(qr.matrix, qr.size - 4, 3) && finderOk(qr.matrix, 3, qr.size - 4),
+  );
+
+  // Every data+ecc block must be a valid Reed–Solomon codeword (zero syndromes).
+  const syndromesOk = ['a', 'http://192.168.1.5:9346/pair?t=abc', sample, maxText].every((text) => {
+    const { blocks } = qrEncode(text);
+    return blocks.every(({ data, ecc }) => rsSyndromes([...data, ...ecc], ecc.length).every((s) => s === 0));
+  });
+  check('qr blocks satisfy Reed–Solomon (zero syndromes)', syndromesOk);
+
+  // Deterministic output for identical input.
+  check('qr is deterministic', JSON.stringify(qrEncode(sample).matrix) === JSON.stringify(qr.matrix));
+} catch (err) {
+  check('qr encoder tests run', false, err.message);
+}
+
+// --- Tunnel helpers ----------------------------------------------------------
+
+try {
+  check(
+    'parseTunnelUrl extracts the quick-tunnel URL from log noise',
+    parseTunnelUrl('2026/08/20 INF |  https://few-random-words.trycloudflare.com  |\nmore noise') === 'https://few-random-words.trycloudflare.com',
+  );
+  check('parseTunnelUrl ignores unrelated URLs', parseTunnelUrl('see https://example.com for details') === null);
+
+  // Minimal tar with one regular file "cloudflared" containing 4 bytes.
+  const header = Buffer.alloc(512);
+  header.write('cloudflared', 0, 'utf8');
+  header.write('00000000004', 124, 'utf8'); // octal size
+  header[156] = 0x30; // type '0' regular file
+  const content = Buffer.concat([header, Buffer.from('abcd'), Buffer.alloc(512 - 4), Buffer.alloc(1024)]);
+  check('untarSingleFile extracts the regular file', untarSingleFile(content).toString('utf8') === 'abcd');
+} catch (err) {
+  check('tunnel helper tests run', false, err.message);
+}
+
+// --- Phone access (LAN listener + pairing) -----------------------------------
+
+try {
+  const mobileFixture = mkdtempSync(path.join(tmpdir(), 'readingroom-mobile-'));
+  writeIn(mobileFixture, 'secret.md', '# Private\n');
+  const mapp = await startServer({
+    root: mobileFixture,
+    port: 0,
+    mobilePort: 0,
+    distDir: path.resolve('dist'),
+    openFile: async () => true,
+  });
+  try {
+    const mbase = mapp.url;
+
+    // Loopback control API: initial status.
+    const st0 = await (await fetch(`${mbase}/api/mobile`)).json();
+    check(
+      'mobile status starts disabled with a token',
+      st0.lan.enabled === false && typeof st0.token === 'string' && st0.token.length >= 20 && st0.tunnel.state === 'off',
+      JSON.stringify(st0).slice(0, 120),
+    );
+
+    await mapp.mobile.enableLan();
+    const st1 = mapp.mobile.status();
+    const mport = st1.lan.port;
+    check(
+      'enabling lan reports pair urls for each local address',
+      st1.lan.enabled === true && st1.lan.urls.length >= 1 && st1.lan.urls.every((u) => u.endsWith(`/pair?t=${st1.token}`)),
+      JSON.stringify(st1.lan),
+    );
+
+    const mobileBase = `http://127.0.0.1:${mport}`;
+
+    // Unauthenticated access is refused — including from loopback, because
+    // cloudflared also connects from loopback.
+    const noCookie = await fetch(`${mobileBase}/api/tree`);
+    check('mobile listener rejects requests without pairing', noCookie.status === 401, `status=${noCookie.status}`);
+
+    const badCookie = await fetch(`${mobileBase}/api/tree`, { headers: { Cookie: 'rr_pair=guess' } });
+    check('mobile listener rejects a wrong cookie', badCookie.status === 401, `status=${badCookie.status}`);
+
+    const wrongToken = await fetch(`${mobileBase}/pair?t=wrong-token`);
+    check('pairing rejects a wrong token', wrongToken.status === 403, `status=${wrongToken.status}`);
+
+    // Correct token: redirect + session cookie, then full access.
+    const pair = await fetch(`${mobileBase}/pair?t=${st1.token}`, { redirect: 'manual' });
+    const setCookie = pair.headers.get('set-cookie') || '';
+    const cookieValue = setCookie.split(';')[0];
+    check(
+      'pairing with the right token redirects and sets the cookie',
+      pair.status === 302 &&
+        pair.headers.get('location') === '/' &&
+        cookieValue.startsWith('rr_pair=') &&
+        setCookie.includes('HttpOnly') &&
+        setCookie.includes('SameSite=Lax'),
+      `status=${pair.status} cookie=${setCookie}`,
+    );
+
+    const paired = await fetch(`${mobileBase}/api/tree`, { headers: { Cookie: cookieValue } });
+    const pairedTree = await paired.json();
+    check('paired device can read the tree', paired.ok && pairedTree.count === 1, `status=${paired.status}`);
+
+    const pairedFile = await fetch(`${mobileBase}/api/file?p=${encodeURIComponent('secret.md')}`, { headers: { Cookie: cookieValue } });
+    check('paired device can read file content', pairedFile.ok && (await pairedFile.json()).content === '# Private\n');
+
+    // Desktop-only surface: system-app opener and control API.
+    const openRes = await fetch(`${mobileBase}/api/open?p=doc.pdf`, { method: 'POST', headers: { Cookie: cookieValue } });
+    check('/api/open is refused on the mobile listener', openRes.status === 403, `status=${openRes.status}`);
+
+    const ctrlRes = await fetch(`${mobileBase}/api/mobile`, { headers: { Cookie: cookieValue } });
+    check('control API is loopback-only', ctrlRes.status === 403, `status=${ctrlRes.status}`);
+
+    // Host allowlist still applies on the mobile listener.
+    await new Promise((resolve) => {
+      const req = http.get({ host: '127.0.0.1', port: mport, path: '/api/tree', headers: { Host: 'evil.com', Cookie: cookieValue } }, (res) => {
+        check('forged Host header rejected on mobile listener', res.statusCode === 403, `status=${res.statusCode}`);
+        res.resume();
+        resolve();
+      });
+      req.on('error', () => {
+        check('forged Host header rejected on mobile listener', false, 'request error');
+        resolve();
+      });
+    });
+
+    // Toggle off via the loopback API, then the listener stops answering.
+    const offRes = await fetch(`${mbase}/api/mobile/lan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: false }),
+    });
+    const offStatus = await offRes.json();
+    check('disabling lan via API reports it off', offRes.ok && offStatus.lan.enabled === false, JSON.stringify(offStatus.lan));
+
+    let refused = false;
+    try {
+      await fetch(`${mobileBase}/api/tree`, { headers: { Cookie: cookieValue } });
+    } catch {
+      refused = true;
+    }
+    check('mobile listener is down after disabling', refused);
+  } finally {
+    await mapp.close();
+  }
+  rmSync(mobileFixture, { recursive: true, force: true });
+} catch (err) {
+  check('mobile access tests run', false, err.message);
 }
 
 failures = results.filter((r) => !r.ok).length;
