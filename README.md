@@ -17,7 +17,8 @@ Codebases are drowning in documentation: READMEs, design docs, agent instruction
 - **Rendered markdown** - GitHub-flavored (tables, task lists), syntax-highlighted code blocks, collapsed YAML frontmatter; `.txt` files shown as plain text
 - **Images** - `png`, `jpg`, `jpeg`, `webp`, `gif`, `avif`, and `svg` render right in the viewer
 - **PDFs** - rendered by your browser's built-in viewer, with an "Open in system viewer" fallback for browsers that can't display PDFs inline
-- **Download** - grab any viewed file from the viewer header; when viewing a historical version, the download is that version under the file's name at the time
+- **Download** - a download button next to every open file saves it to your computer; if you're viewing an older version from the History panel, you get that exact version
+- **File details & history** - a side panel shows the essentials at a glance (size, word count, reading time, who last edited the file), plus a History tab listing every saved change - click one to view the file as it was back then
 - **Search** - press `/` and type
 - **Live reload** - files created, edited, or deleted by you (or your AI agents) appear instantly
 - **Deep-linkable URLs** - `/view/docs/plan.md` works on reload.
@@ -40,6 +41,14 @@ It stays out of your way:
 
 [On Youtube](https://youtu.be/mOOgsZkM8pA)
 
+## File history and downloads
+
+![File details, history and download](https://raw.githubusercontent.com/saif71/readingroom/main/docs/file-download.png)
+
+Open a file and the panel on the right tells you about it: how big it is, how long it takes to read, and - if your project uses git - who last touched it. The **History** tab goes further back in time: every saved change is listed, and clicking one shows you the file exactly as it was at that point.
+
+The download button in the viewer header always saves what you're looking at - open the current file and you get the current version, open a version from History and you get that one.
+
 ## CLI
 
 ```
@@ -53,17 +62,18 @@ readingroom [options]
   -v, --version         Show version
 ```
 
-The server binds to `127.0.0.1` only - your files are never exposed to the network. It validates the `Host` header (blocking DNS-rebinding attacks) and refuses any path that resolves outside the served directory.
+By default the server is visible only on your own machine (`127.0.0.1`) - the phone sharing described below is strictly opt-in. The server also validates the `Host` header (blocking DNS-rebinding attacks) and refuses any path that resolves outside the served directory.
 
 ## Read on your phone
 
-![cover](/docs/remote-access.png)
-Click the phone icon in the sidebar for a QR code:
+![Open on your phone](https://raw.githubusercontent.com/saif71/readingroom/main/docs/remote-access.png)
 
-- **On this Wi-Fi** - scan and you're reading. Nothing leaves your network.
-- **From anywhere** - "Start tunnel" creates a private `trycloudflare.com` URL that works from any network. The cloudflared helper downloads once on first use and is cached for faster future runs; there is nothing to install or sign up for.
+Click the phone icon in the sidebar, then choose how your phone will connect:
 
-Both ways are guarded by a per-run access code (part of the QR URL) - anyone without it gets refused. Sharing stops when you stop it in the dialog or close readingroom, and the code changes on every run. Tunnels are routed through Cloudflare's free quick-tunnel service, so they need internet access and are best-effort, not guaranteed uptime.
+- **Same Wi-Fi** - the fastest option when your phone and computer are on the same network. Scan the QR code and you're reading. Nothing leaves your network.
+- **Any network** - for mobile data, a different Wi-Fi, or reading while away. "Open from anywhere" creates a private `trycloudflare.com` address that works from any network. The first time, a small helper tool from Cloudflare downloads automatically - there is nothing to install and no account to sign up for.
+
+Both options are protected by a one-time access code built into the QR link, so only you get in. The code changes every time readingroom starts, and sharing stops as soon as you close the dialog or quit. The "any network" option relies on Cloudflare's free tunnel service - great for reading on the go, but best-effort rather than a permanent public link.
 
 ## Global Install (optional)
 
