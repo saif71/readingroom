@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { fetchFile, fetchVersion, isImagePath, isPdfPath, rawUrl, versionRawUrl } from '../api';
+import { fetchFile, fetchVersion, isImagePath, isPdfPath, rawUrl, versionRawUrl, downloadUrl, versionDownloadUrl } from '../api';
 import { formatDate } from '../format';
 import MarkdownView from './MarkdownView';
 import TextView from './TextView';
@@ -52,11 +52,27 @@ function Centered({ children }) {
   );
 }
 
-function Header({ name, path }) {
+function Header({ name, path, downloadUrl }) {
   return (
-    <header className="mb-6 border-b border-neutral-200 pb-4 dark:border-neutral-800">
-      <h1 className="text-xl font-semibold tracking-tight">{name}</h1>
-      <p className="mt-1 font-mono text-xs text-neutral-400">{path.split('/').join(' / ')}</p>
+    <header className="mb-6 flex items-start justify-between gap-3 border-b border-neutral-200 pb-4 dark:border-neutral-800">
+      <div className="min-w-0">
+        <h1 className="text-xl font-semibold tracking-tight">{name}</h1>
+        <p className="mt-1 font-mono text-xs text-neutral-400">{path.split('/').join(' / ')}</p>
+      </div>
+      {downloadUrl && (
+        <a
+          href={downloadUrl}
+          title="Download"
+          aria-label={`Download ${name}`}
+          className="mt-1 shrink-0 rounded-md p-1.5 text-neutral-500 transition-colors hover:bg-neutral-200/60 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-800/60 dark:hover:text-neutral-200"
+        >
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" x2="12" y1="15" y2="3" />
+          </svg>
+        </a>
+      )}
     </header>
   );
 }
@@ -114,6 +130,7 @@ export default function Viewer({ path, refSha, refreshKey, onNavigate }) {
   }, [path, refreshKey, isImage, isPdf, isVersion, refSha]);
 
   const sourceUrl = isVersion ? versionRawUrl(path, refSha) : rawUrl(path);
+  const dlUrl = isVersion ? versionDownloadUrl(path, refSha) : downloadUrl(path);
 
   if (isImage || isPdf) {
     if (isVersion && state.status === 'loading') {
@@ -134,7 +151,7 @@ export default function Viewer({ path, refSha, refreshKey, onNavigate }) {
     return (
       <div className="mx-auto max-w-4xl px-6 py-8 sm:px-10">
         {isVersion && <VersionBanner version={state.file} onBack={() => onNavigate(path)} />}
-        <Header name={path.split('/').pop()} path={path} />
+        <Header name={path.split('/').pop()} path={path} downloadUrl={dlUrl} />
         {isImage ? (
           <ImageView src={sourceUrl} alt={path.split('/').pop()} reloadKey={isVersion ? 0 : refreshKey} />
         ) : (
@@ -167,7 +184,7 @@ export default function Viewer({ path, refSha, refreshKey, onNavigate }) {
   return (
     <div className="mx-auto max-w-3xl px-6 py-8 sm:px-10">
       {isVersion && <VersionBanner version={file} onBack={() => onNavigate(path)} />}
-      <Header name={file.name} path={file.path} />
+      <Header name={file.name} path={file.path} downloadUrl={dlUrl} />
       {meta && Object.keys(meta).length > 0 && <Frontmatter meta={meta} />}
       {file.kind === 'md' ? (
         <MarkdownView path={file.path} content={body} onNavigate={onNavigate} />

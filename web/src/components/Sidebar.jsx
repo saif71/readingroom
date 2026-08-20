@@ -53,7 +53,15 @@ const THEMES = [
   { id: "dark", label: "Dark" },
 ];
 
-export default function Sidebar({ tree, selected, onSelect }) {
+export default function Sidebar({
+  tree,
+  selected,
+  onSelect,
+  open,
+  onToggleOpen,
+  mobile,
+  onOpenQr,
+}) {
   const [query, setQuery] = useState("");
   const [kind, setKind] = useState("all");
   const [expanded, setExpanded] = useState(() => new Set());
@@ -151,14 +159,120 @@ export default function Sidebar({ tree, selected, onSelect }) {
       .map((k) => ({ id: k, label: KIND_LABELS[k], count: kindCounts[k] })),
   );
 
+  // On mobile a closed sidebar is fully hidden; it is reopened from the top bar.
+  if (!open && mobile) return null;
+
+  if (!open) {
+    return (
+      <aside className="flex h-full w-10 shrink-0 flex-col items-center border-r border-neutral-200 bg-zinc-100 py-3 dark:border-neutral-800 dark:bg-neutral-800">
+        <button
+          onClick={() => onToggleOpen(true)}
+          title="Show file tree"
+          aria-label="Show file tree"
+          className="rounded-md p-1.5 text-neutral-500 transition-colors hover:bg-neutral-200/60 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700/60 dark:hover:text-neutral-200"
+        >
+          <svg
+            className="h-4 w-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <rect width="18" height="18" x="3" y="3" rx="2" />
+            <path d="M9 3v18" />
+            <path d="m13 9 3 3-3 3" />
+          </svg>
+        </button>
+        {onOpenQr && (
+          <button
+            onClick={onOpenQr}
+            title="Open on your phone"
+            aria-label="Open on your phone"
+            className="mt-1 rounded-md p-1.5 text-neutral-500 transition-colors hover:bg-neutral-200/60 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700/60 dark:hover:text-neutral-200"
+          >
+            <svg
+              className="h-4 w-4"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect width="14" height="20" x="5" y="2" rx="2" ry="2" />
+              <path d="M12 18h.01" />
+            </svg>
+          </button>
+        )}
+      </aside>
+    );
+  }
+
   return (
-    <aside className="flex h-full w-72 shrink-0 flex-col  bg-zinc-100 dark:border-neutral-800 dark:bg-zinc-800 sm:w-80">
+    <>
+      {mobile && (
+        <div
+          className="fixed inset-0 z-30 bg-black/40"
+          onClick={() => onToggleOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+      <aside
+        className={`${
+          mobile
+            ? "fixed inset-y-0 left-0 z-40 w-72 max-w-[85vw] shadow-xl"
+            : "w-72 shrink-0 border-r border-neutral-200 sm:w-80"
+        } flex h-full flex-col bg-zinc-100 dark:border-neutral-800 dark:bg-neutral-800`}
+      >
       <div className="px-3 pb-2 pt-3">
-        <div className="flex items-baseline gap-2 px-1 pb-2">
+        <div className="flex items-center gap-2 px-1 pb-2">
           <span className="font-semibold tracking-tight">readingroom</span>
-          <span className="text-xs text-neutral-400">
+          <span className="truncate text-xs text-neutral-400">
             {tree ? `${tree.count} files` : "…"}
           </span>
+          {onOpenQr && (
+            <button
+              onClick={onOpenQr}
+              title="Open on your phone"
+              aria-label="Open on your phone"
+              className="ml-auto shrink-0 rounded-md p-1 text-neutral-500 transition-colors hover:bg-neutral-200/60 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700/60 dark:hover:text-neutral-200"
+            >
+              <svg
+                className="h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <rect width="14" height="20" x="5" y="2" rx="2" ry="2" />
+                <path d="M12 18h.01" />
+              </svg>
+            </button>
+          )}
+          <button
+            onClick={() => onToggleOpen(false)}
+            title="Hide file tree"
+            aria-label="Hide file tree"
+            className="shrink-0 rounded-md p-1 text-neutral-500 transition-colors hover:bg-neutral-200/60 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700/60 dark:hover:text-neutral-200"
+          >
+            <svg
+              className="h-4 w-4"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect width="18" height="18" x="3" y="3" rx="2" />
+              <path d="M9 3v18" />
+              <path d="m16 9-3 3 3 3" />
+            </svg>
+          </button>
         </div>
         <input
           ref={inputRef}
@@ -254,6 +368,7 @@ export default function Sidebar({ tree, selected, onSelect }) {
           options={THEMES}
         />
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }

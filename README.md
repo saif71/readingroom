@@ -17,11 +17,13 @@ Codebases are drowning in documentation: READMEs, design docs, agent instruction
 - **Rendered markdown** - GitHub-flavored (tables, task lists), syntax-highlighted code blocks, collapsed YAML frontmatter; `.txt` files shown as plain text
 - **Images** - `png`, `jpg`, `jpeg`, `webp`, `gif`, `avif`, and `svg` render right in the viewer
 - **PDFs** - rendered by your browser's built-in viewer, with an "Open in system viewer" fallback for browsers that can't display PDFs inline
+- **Download** - grab any viewed file from the viewer header; when viewing a historical version, the download is that version under the file's name at the time
 - **Search** - press `/` and type
 - **Live reload** - files created, edited, or deleted by you (or your AI agents) appear instantly
 - **Deep-linkable URLs** - `/view/docs/plan.md` works on reload.
 - **Relative links work** - links between markdown files open in the viewer; images referenced by docs are served
 - **Dark + light mode** following your or OS preference
+- **Read on your phone** - a QR code in the sidebar pairs your phone over Wi-Fi, or through a private tunnel when you're on a different network
 
 ## What it shows (and skips)
 
@@ -52,6 +54,15 @@ readingroom [options]
 ```
 
 The server binds to `127.0.0.1` only - your files are never exposed to the network. It validates the `Host` header (blocking DNS-rebinding attacks) and refuses any path that resolves outside the served directory.
+
+## Read on your phone
+
+Click the phone icon in the sidebar for a QR code:
+
+- **On this Wi-Fi** - scan and you're reading. Nothing leaves your network.
+- **From anywhere** - "Start tunnel" creates a private `trycloudflare.com` URL that works from any network. The cloudflared helper (~30 MB) downloads once on first use and is cached; there is nothing to install or sign up for.
+
+Both ways are guarded by a per-run access code (part of the QR URL) - anyone without it gets refused. Sharing stops when you stop it in the dialog or close readingroom, and the code changes on every run. Tunnels are routed through Cloudflare's free quick-tunnel service, so they need internet access and are best-effort, not guaranteed uptime.
 
 ## Global Install (optional)
 

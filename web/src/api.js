@@ -66,6 +66,14 @@ export function rawUrl(path) {
   return `/api/raw?p=${encodeURIComponent(path)}`;
 }
 
+export function downloadUrl(path) {
+  return `${rawUrl(path)}&download=1`;
+}
+
+export function versionDownloadUrl(path, ref) {
+  return `${versionRawUrl(path, ref)}&download=1`;
+}
+
 export function viewUrl(path) {
   return '/view/' + path.split('/').map(encodeURIComponent).join('/');
 }
@@ -82,6 +90,35 @@ export function pathFromViewUrl(pathname) {
   } catch {
     return null;
   }
+}
+
+export async function fetchMobileStatus() {
+  const res = await fetch('/api/mobile');
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || 'failed to load phone-access status');
+  return body;
+}
+
+export async function setMobileLan(enabled) {
+  const res = await fetch('/api/mobile/lan', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || 'failed to toggle phone access');
+  return body;
+}
+
+export async function setMobileTunnel(enabled) {
+  const res = await fetch('/api/mobile/tunnel', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || 'failed to toggle the tunnel');
+  return body;
 }
 
 export function subscribeTree(onTree) {

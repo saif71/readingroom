@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import { startServer } from '../src/server.js';
+import { qrEncode, rsSyndromes, MAX_INPUT_BYTES } from '../web/src/vendor/qr.js';
+import { parseTunnelUrl, untarSingleFile } from '../src/tunnel.js';
 
 const results = [];
 function check(name, ok, detail = '') {
@@ -43,6 +45,7 @@ write('.github/workflows/ci.md', '# CI\n');
 write('nested/keep.md', 'kept\n');
 write('nested/.gitignore', 'local.md\n');
 write('nested/local.md', 'ignored by nested gitignore\n');
+write('notas-日本語.md', 'notas en japonés\n');
 write('.gitignore', 'ignored/\n*.gen.md\n');
 write('ignored/secret.md', 'ignored dir\n');
 write('notes.gen.md', 'ignored glob\n');
@@ -68,6 +71,7 @@ const EXPECTED = [
   'img.png',
   'logo.svg',
   'nested/keep.md',
+  'notas-日本語.md',
   'photo.JPG',
   'pic.webp',
 ];
@@ -139,8 +143,26 @@ try {
       rawRes.ok &&
         rawRes.headers.get('content-type') === 'image/png' &&
         rawRes.headers.get('content-security-policy') === 'sandbox' &&
-        rawRes.headers.get('x-content-type-options') === 'nosniff',
+        rawRes.headers.get('x-content-type-options') === 'nosniff' &&
+        rawRes.headers.get('content-disposition') === null,
       `ct=${rawRes.headers.get('content-type')}`
+    );
+
+    // 7b. download=1 switches the raw response to an attachment download.
+    const dlRes = await fetch(`${base}/api/raw?p=${encodeURIComponent('README.md')}&download=1`);
+    check(
+      'download=1 sets attachment content-disposition',
+      dlRes.ok &&
+        dlRes.headers.get('content-disposition') === `attachment; filename="README.md"; filename*=UTF-8''README.md`,
+      `cd=${dlRes.headers.get('content-disposition')}`
+    );
+
+    const uniDlRes = await fetch(`${base}/api/raw?p=${encodeURIComponent('notas-日本語.md')}&download=1`);
+    const uniCd = uniDlRes.headers.get('content-disposition') || '';
+    check(
+      'unicode filenames keep their name via RFC 5987',
+      uniDlRes.ok && uniCd.includes('filename="notas-___.md"') && uniCd.includes(`filename*=UTF-8''notas-`),
+      `cd=${uniCd}`
     );
 
     // 8. Raw PDF: correct MIME, exempt from CSP sandbox (built-in viewers).
@@ -348,6 +370,13 @@ if (!gitAvailable) {
       );
       const pjson = await (await fetch(`${gbase}/api/version?p=pic.png&ref=${shaBySubject['add pic']}`)).json();
       check('json version of a binary has null content but keeps meta', pjson.binary === true && pjson.content === null && pjson.subject === 'add pic');
+
+      const vdlRes = await fetch(`${gbase}/api/version?p=${encodeURIComponent('guide.md')}&ref=${shaBySubject['add doc']}&raw=1&download=1`);
+      check(
+        'version download uses the rename-aware historical filename',
+        vdlRes.ok && (vdlRes.headers.get('content-disposition') || '').includes('filename="doc.md"'),
+        `cd=${vdlRes.headers.get('content-disposition')}`
+      );
     } finally {
       await gapp.close();
     }
@@ -374,6 +403,263 @@ if (!gitAvailable) {
   } finally {
     rmSync(gitFixture, { recursive: true, force: true });
   }
+}
+
+// --- QR encoder ------------------------------------------------------------
+
+try {
+  const sample = 'http://192.168.1.42:9346/pair?t=A3fK9xQ2mB7wE5rT1yU8i';
+  const qr = qrEncode(sample);
+  check('qr picks the expected version for a LAN pair URL', qr.version === 4 && qr.size === 33, `v${qr.version} ${qr.size}x${qr.size}`);
+
+  const tiny = qrEncode('hello world');
+  check('qr picks v1 for a short input', tiny.version === 1 && tiny.size === 21, `v${tiny.version}`);
+
+  const maxPrefix = 'https://x.trycloudflare.com/pair?t=';
+  const maxText = maxPrefix + 'a'.repeat(MAX_INPUT_BYTES - maxPrefix.length);
+  check('qr max-capacity input is accepted at v7', qrEncode(maxText).version === 7);
+  let overflows = false;
+  try {
+    qrEncode(maxText + 'x');
+  } catch {
+    overflows = true;
+  }
+  check('qr rejects input beyond capacity', overflows && MAX_INPUT_BYTES === 122);
+
+  // Finder pattern: dark 3x3 core, light ring, dark border (dist ≤ 3).
+  const finderOk = (m, cx, cy) => {
+    for (let dy = -3; dy <= 3; dy++) {
+      for (let dx = -3; dx <= 3; dx++) {
+        const dist = Math.max(Math.abs(dx), Math.abs(dy));
+        if (m[cy + dy][cx + dx] !== (dist !== 2)) return false;
+      }
+    }
+    return true;
+  };
+  check(
+    'qr matrix has the three finder patterns',
+    finderOk(qr.matrix, 3, 3) && finderOk(qr.matrix, qr.size - 4, 3) && finderOk(qr.matrix, 3, qr.size - 4),
+  );
+
+  // Every data+ecc block must be a valid Reed–Solomon codeword (zero syndromes).
+  const syndromesOk = ['a', 'http://192.168.1.5:9346/pair?t=abc', sample, maxText].every((text) => {
+    const { blocks } = qrEncode(text);
+    return blocks.every(({ data, ecc }) => rsSyndromes([...data, ...ecc], ecc.length).every((s) => s === 0));
+  });
+  check('qr blocks satisfy Reed–Solomon (zero syndromes)', syndromesOk);
+
+  // Deterministic output for identical input.
+  check('qr is deterministic', JSON.stringify(qrEncode(sample).matrix) === JSON.stringify(qr.matrix));
+} catch (err) {
+  check('qr encoder tests run', false, err.message);
+}
+
+// --- Tunnel helpers ----------------------------------------------------------
+
+try {
+  check(
+    'parseTunnelUrl extracts the quick-tunnel URL from log noise',
+    parseTunnelUrl('2026/08/20 INF |  https://few-random-words.trycloudflare.com  |\nmore noise') === 'https://few-random-words.trycloudflare.com',
+  );
+  check('parseTunnelUrl ignores unrelated URLs', parseTunnelUrl('see https://example.com for details') === null);
+
+  // Minimal tar with one regular file "cloudflared" containing 4 bytes.
+  const header = Buffer.alloc(512);
+  header.write('cloudflared', 0, 'utf8');
+  header.write('00000000004', 124, 'utf8'); // octal size
+  header[156] = 0x30; // type '0' regular file
+  const content = Buffer.concat([header, Buffer.from('abcd'), Buffer.alloc(512 - 4), Buffer.alloc(1024)]);
+  check('untarSingleFile extracts the regular file', untarSingleFile(content).toString('utf8') === 'abcd');
+} catch (err) {
+  check('tunnel helper tests run', false, err.message);
+}
+
+// --- Phone access (LAN listener + pairing) -----------------------------------
+
+try {
+  const mobileFixture = mkdtempSync(path.join(tmpdir(), 'readingroom-mobile-'));
+  writeIn(mobileFixture, 'secret.md', '# Private\n');
+  const mapp = await startServer({
+    root: mobileFixture,
+    port: 0,
+    mobilePort: 0,
+    distDir: path.resolve('dist'),
+    openFile: async () => true,
+  });
+  try {
+    const mbase = mapp.url;
+
+    // Loopback control API: initial status.
+    const st0 = await (await fetch(`${mbase}/api/mobile`)).json();
+    check(
+      'mobile status starts disabled with a token',
+      st0.lan.enabled === false && typeof st0.token === 'string' && st0.token.length >= 20 && st0.tunnel.state === 'off',
+      JSON.stringify(st0).slice(0, 120),
+    );
+
+    await mapp.mobile.enableLan();
+    const st1 = mapp.mobile.status();
+    const mport = st1.lan.port;
+    check(
+      'enabling lan reports pair urls for each local address',
+      st1.lan.enabled === true && st1.lan.urls.length >= 1 && st1.lan.urls.every((u) => u.endsWith(`/pair?t=${st1.token}`)),
+      JSON.stringify(st1.lan),
+    );
+
+    const mobileBase = `http://127.0.0.1:${mport}`;
+
+    // Unauthenticated access is refused — including from loopback, because
+    // cloudflared also connects from loopback.
+    const noCookie = await fetch(`${mobileBase}/api/tree`);
+    check('mobile listener rejects requests without pairing', noCookie.status === 401, `status=${noCookie.status}`);
+
+    const badCookie = await fetch(`${mobileBase}/api/tree`, { headers: { Cookie: 'rr_pair=guess' } });
+    check('mobile listener rejects a wrong cookie', badCookie.status === 401, `status=${badCookie.status}`);
+
+    const wrongToken = await fetch(`${mobileBase}/pair?t=wrong-token`);
+    check('pairing rejects a wrong token', wrongToken.status === 403, `status=${wrongToken.status}`);
+
+    // Correct token: redirect + session cookie, then full access.
+    const pair = await fetch(`${mobileBase}/pair?t=${st1.token}`, { redirect: 'manual' });
+    const setCookie = pair.headers.get('set-cookie') || '';
+    const cookieValue = setCookie.split(';')[0];
+    check(
+      'pairing with the right token redirects and sets the cookie',
+      pair.status === 302 &&
+        pair.headers.get('location') === '/' &&
+        cookieValue.startsWith('rr_pair=') &&
+        setCookie.includes('HttpOnly') &&
+        setCookie.includes('SameSite=Lax'),
+      `status=${pair.status} cookie=${setCookie}`,
+    );
+
+    const paired = await fetch(`${mobileBase}/api/tree`, { headers: { Cookie: cookieValue } });
+    const pairedTree = await paired.json();
+    check('paired device can read the tree', paired.ok && pairedTree.count === 1, `status=${paired.status}`);
+
+    const pairedFile = await fetch(`${mobileBase}/api/file?p=${encodeURIComponent('secret.md')}`, { headers: { Cookie: cookieValue } });
+    check('paired device can read file content', pairedFile.ok && (await pairedFile.json()).content === '# Private\n');
+
+    // Desktop-only surface: system-app opener and control API.
+    const openRes = await fetch(`${mobileBase}/api/open?p=doc.pdf`, { method: 'POST', headers: { Cookie: cookieValue } });
+    check('/api/open is refused on the mobile listener', openRes.status === 403, `status=${openRes.status}`);
+
+    const ctrlRes = await fetch(`${mobileBase}/api/mobile`, { headers: { Cookie: cookieValue } });
+    check('control API is loopback-only', ctrlRes.status === 403, `status=${ctrlRes.status}`);
+
+    // Host allowlist still applies on the mobile listener.
+    await new Promise((resolve) => {
+      const req = http.get({ host: '127.0.0.1', port: mport, path: '/api/tree', headers: { Host: 'evil.com', Cookie: cookieValue } }, (res) => {
+        check('forged Host header rejected on mobile listener', res.statusCode === 403, `status=${res.statusCode}`);
+        res.resume();
+        resolve();
+      });
+      req.on('error', () => {
+        check('forged Host header rejected on mobile listener', false, 'request error');
+        resolve();
+      });
+    });
+
+    // Toggle off via the loopback API, then the listener stops answering.
+    const offRes = await fetch(`${mbase}/api/mobile/lan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: false }),
+    });
+    const offStatus = await offRes.json();
+    check('disabling lan via API reports it off', offRes.ok && offStatus.lan.enabled === false, JSON.stringify(offStatus.lan));
+
+    let refused = false;
+    try {
+      await fetch(`${mobileBase}/api/tree`, { headers: { Cookie: cookieValue } });
+    } catch {
+      refused = true;
+    }
+    check('mobile listener is down after disabling', refused);
+  } finally {
+    await mapp.close();
+  }
+  rmSync(mobileFixture, { recursive: true, force: true });
+} catch (err) {
+  check('mobile access tests run', false, err.message);
+}
+
+// --- Phone access: tunnel and Wi-Fi sharing are independent user actions ----
+//
+// Starting a tunnel must NOT report Wi-Fi sharing (no surprise QR while the
+// helper downloads), and stopping it must not tear down explicitly-started
+// sharing. Uses a fake tunnel so no network is involved.
+
+try {
+  const FAKE_HOST = 'fake-tunnel.example.trycloudflare.com';
+  const fakeTunnel = async ({ onProgress }) => {
+    onProgress?.({ phase: 'downloading', bytes: 10, total: 10 });
+    onProgress?.({ phase: 'starting' });
+    return { url: `https://${FAKE_HOST}`, host: FAKE_HOST, stop: async () => {} };
+  };
+  const fixture2 = mkdtempSync(path.join(tmpdir(), 'readingroom-split-'));
+  writeIn(fixture2, 'doc.md', 'split state\n');
+  const app2 = await startServer({
+    root: fixture2,
+    port: 0,
+    mobilePort: 0,
+    distDir: path.resolve('dist'),
+    openFile: async () => true,
+    startTunnelImpl: fakeTunnel,
+  });
+  const waitTunnel = async (pred, label) => {
+    for (let i = 0; i < 20; i++) {
+      const st = app2.mobile.status();
+      if (pred(st)) return st;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error('timed out waiting for ' + label);
+  };
+  try {
+    // Tunnel alone: listener runs silently, Wi-Fi sharing is NOT advertised.
+    await app2.mobile.startTunnel();
+    const on1 = await waitTunnel((st) => st.tunnel.state === 'on', 'tunnel on');
+    check(
+      'tunnel start does not advertise Wi-Fi sharing',
+      on1.lan.enabled === false && on1.lan.urls.length === 0 && on1.lan.port !== null && on1.tunnel.url === `https://${FAKE_HOST}/pair?t=${on1.token}`,
+      JSON.stringify({ lan: on1.lan, tunnel: on1.tunnel }),
+    );
+
+    // The tunnel hostname is allowed through and requires pairing as usual.
+    const viaTunnel = await fetch(`http://127.0.0.1:${on1.lan.port}/api/tree`, { headers: { Host: FAKE_HOST } });
+    check('tunnel host passes the allowlist but needs pairing', viaTunnel.status === 401, `status=${viaTunnel.status}`);
+    const paired = await fetch(`http://127.0.0.1:${on1.lan.port}/pair?t=${on1.token}`, { headers: { Host: FAKE_HOST }, redirect: 'manual' });
+    const cookie2 = (paired.headers.get('set-cookie') || '').split(';')[0];
+    const okTree = await fetch(`http://127.0.0.1:${on1.lan.port}/api/tree`, { headers: { Host: FAKE_HOST, Cookie: cookie2 } });
+    check('tunnel-host request works once paired', okTree.ok, `status=${okTree.status}`);
+
+    // Stopping the tunnel with sharing never started: everything goes down.
+    await app2.mobile.stopTunnel();
+    const off1 = await waitTunnel((st) => st.tunnel.state === 'off', 'tunnel off');
+    check('stopping an unshared tunnel tears the listener down', off1.tunnel.state === 'off' && off1.lan.enabled === false && off1.lan.port === null, JSON.stringify(off1.lan));
+
+    // Both explicitly started: stopping the tunnel keeps sharing alive.
+    await app2.mobile.enableLan();
+    await app2.mobile.startTunnel();
+    await waitTunnel((st) => st.tunnel.state === 'on', 'tunnel on again');
+    await app2.mobile.stopTunnel();
+    const off2 = await waitTunnel((st) => st.tunnel.state === 'off', 'tunnel off again');
+    check(
+      'stopping the tunnel keeps explicitly-started sharing alive',
+      off2.lan.enabled === true && off2.lan.port !== null && off2.lan.urls.length >= 1,
+      JSON.stringify(off2.lan),
+    );
+
+    // Stopping sharing takes the whole listener down (tunnel already off).
+    await app2.mobile.disableLan();
+    const off3 = app2.mobile.status();
+    check('stopping sharing tears everything down', off3.lan.enabled === false && off3.lan.port === null, JSON.stringify(off3.lan));
+  } finally {
+    await app2.close();
+  }
+  rmSync(fixture2, { recursive: true, force: true });
+} catch (err) {
+  check('split-state tests run', false, err.message);
 }
 
 failures = results.filter((r) => !r.ok).length;

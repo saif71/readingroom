@@ -1,9 +1,12 @@
 import http from 'node:http';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { createReadStream, existsSync, readFileSync, statSync, watch } from 'node:fs';
+import { networkInterfaces } from 'node:os';
 import path from 'node:path';
 import { scanTree, fileKind, DEFAULT_IGNORED_DIRS } from './scanner.js';
 import { openExternal } from './openBrowser.js';
 import { repoStatus, lastCommitFor, fileHistory, fileVersion, VersionNotFound } from './git.js';
+import { startQuickTunnel } from './tunnel.js';
 
 const MIME = {
   '.md': 'text/markdown; charset=utf-8',
@@ -33,6 +36,15 @@ function mimeType(file) {
   return MIME[path.extname(file).toLowerCase()] || 'application/octet-stream';
 }
 
+/**
+ * RFC 6266 Content-Disposition for a download filename: an ASCII-only
+ * `filename` fallback plus an RFC 5987 `filename*` carrying the real name.
+ */
+function contentDisposition(name) {
+  const fallback = name.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(name)}`;
+}
+
 function sendJson(res, status, body) {
   const data = JSON.stringify(body);
   res.writeHead(status, {
@@ -42,17 +54,17 @@ function sendJson(res, status, body) {
   res.end(data);
 }
 
-function hostAllowed(header) {
+function loopbackHost(header) {
   if (!header) return false;
   try {
-    const hostname = new URL('http://' + header).hostname;
-    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '[::1]';
+    const hostname = new URL('http://' + header).hostname.replace(/^\[|\]$/g, '');
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
   } catch {
     return false;
   }
 }
 
-function listen(server, port, limit) {
+function listen(server, port, limit, host = '127.0.0.1') {
   return new Promise((resolve, reject) => {
     let tries = 0;
     const attempt = (p) => {
@@ -64,7 +76,7 @@ function listen(server, port, limit) {
           reject(err);
         }
       });
-      server.listen(p, '127.0.0.1', () => resolve(server.address().port));
+      server.listen(p, host, () => resolve(server.address().port));
     };
     attempt(port);
   });
@@ -78,13 +90,93 @@ const NOT_BUILT_PAGE = `<!doctype html>
 <p>If you are hacking on readingroom itself, run <code>npm run build</code> (or use <code>npm run dev:web</code>) and reload.</p>
 </body></html>`;
 
+const PAIR_COOKIE = 'rr_pair';
+
+// Served to unauthenticated visitors on the mobile listener. Deliberately
+// does not echo the token — only the paired desktop and QR URL know it.
+const PAIR_REQUIRED_PAGE = `<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>readingroom</title></head>
+<body style="font-family: ui-monospace, monospace; background:#0a0a0a; color:#e5e5e5; padding:3rem; line-height:1.6">
+<h1 style="font-size:1.2rem">Pairing required</h1>
+<p>This readingroom is private. Scan the QR code in the desktop sidebar again,</p>
+<p>or open <code>/pair?t=YOUR_ACCESS_CODE</code> with the code shown on the desktop.</p>
+</body></html>`;
+
+/** Read a small JSON body from a POST request. */
+function readJsonBody(req, limit = 2048) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on('data', (chunk) => {
+      size += chunk.length;
+      if (size > limit) {
+        reject(new Error('body too large'));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => {
+      try {
+        resolve(chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {});
+      } catch {
+        reject(new Error('invalid JSON body'));
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
+function lanIpv4Addresses() {
+  const out = new Set();
+  for (const addrs of Object.values(networkInterfaces())) {
+    for (const addr of addrs || []) {
+      if (addr.family === 'IPv4' && !addr.internal) out.add(addr.address);
+    }
+  }
+  return [...out];
+}
+
 /**
  * Start the readingroom server.
  *
- * Returns { server, port, url, root, tree(), close() }.
+ * Returns { server, port, url, root, tree(), liveReload, mobile, close() }.
+ * `mobile` exposes the phone-access feature: { status(), enableLan(),
+ * disableLan(), startTunnel(), stopTunnel() }. `startTunnelImpl` is
+ * injectable for tests.
  */
-export async function startServer({ root, port = 9345, distDir, autoIncrementLimit = 100, openFile = openExternal }) {
+export async function startServer({
+  root,
+  port = 9345,
+  mobilePort = 9346,
+  distDir,
+  autoIncrementLimit = 100,
+  openFile = openExternal,
+  startTunnelImpl = startQuickTunnel,
+}) {
   const rootAbs = path.resolve(root);
+
+  // Per-run pairing token. Anything arriving on the mobile listener must
+  // present it (as ?t= on /pair, or as the cookie /pair sets) to get in.
+  const token = randomBytes(18).toString('base64url');
+  const tokenHash = createHash('sha256').update(token).digest();
+  const tokenEquals = (candidate) => {
+    if (typeof candidate !== 'string') return false;
+    const digest = createHash('sha256').update(candidate).digest();
+    return timingSafeEqual(digest, tokenHash);
+  };
+  const hasPairCookie = (req) => {
+    const cookies = req.headers.cookie;
+    if (!cookies) return false;
+    for (const part of cookies.split(';')) {
+      const eq = part.indexOf('=');
+      if (eq !== -1 && part.slice(0, eq).trim() === PAIR_COOKIE) {
+        return tokenEquals(part.slice(eq + 1).trim());
+      }
+    }
+    return false;
+  };
   let cachedTree = scanTree(rootAbs);
   let lastTreeJson = JSON.stringify(cachedTree);
   const sseClients = new Set();
@@ -171,12 +263,8 @@ export async function startServer({ root, port = 9345, distDir, autoIncrementLim
     createReadStream(indexPath).pipe(res);
   }
 
-  const server = http.createServer(async (req, res) => {
+  const handle = async (req, res, channel) => {
     try {
-      if (!hostAllowed(req.headers.host)) {
-        sendJson(res, 403, { error: 'forbidden host' });
-        return;
-      }
       const url = new URL(req.url, 'http://127.0.0.1');
       const pathname = url.pathname;
 
@@ -332,6 +420,12 @@ export async function startServer({ root, port = 9345, distDir, autoIncrementLim
             'Cache-Control': 'no-store',
             'X-Content-Type-Options': 'nosniff',
             ...(type === 'application/pdf' ? {} : { 'Content-Security-Policy': 'sandbox' }),
+            ...(url.searchParams.get('download') === '1'
+              // entry.path is the rename-aware name at this commit; refs hit
+              // outside the walked history have no entry and fall back to the
+              // current name.
+              ? { 'Content-Disposition': contentDisposition(path.basename(version.entry?.path || rel)) }
+              : {}),
           });
           res.end(version.buffer);
           return;
@@ -382,12 +476,20 @@ export async function startServer({ root, port = 9345, distDir, autoIncrementLim
           // exempt: some browsers refuse to run their built-in PDF viewer on
           // a response delivered under CSP sandbox.
           ...(type === 'application/pdf' ? {} : { 'Content-Security-Policy': 'sandbox' }),
+          ...(url.searchParams.get('download') === '1'
+            ? { 'Content-Disposition': contentDisposition(path.basename(abs)) }
+            : {}),
         });
         createReadStream(abs).pipe(res);
         return;
       }
 
       if (pathname === '/api/open') {
+        if (channel === 'mobile') {
+          // Launching a system app is a desktop-only action.
+          sendJson(res, 403, { error: 'not available from a paired device' });
+          return;
+        }
         if (req.method !== 'POST') {
           sendJson(res, 405, { error: 'method not allowed' });
           return;
@@ -422,6 +524,48 @@ export async function startServer({ root, port = 9345, distDir, autoIncrementLim
         return;
       }
 
+      if (pathname === '/api/mobile' || pathname === '/api/mobile/lan' || pathname === '/api/mobile/tunnel') {
+        // The phone-access controls manage the host machine; loopback only.
+        if (channel !== 'local') {
+          sendJson(res, 403, { error: 'desktop only' });
+          return;
+        }
+        if (pathname === '/api/mobile') {
+          if (req.method !== 'GET') {
+            sendJson(res, 405, { error: 'method not allowed' });
+            return;
+          }
+          sendJson(res, 200, mobileStatus());
+          return;
+        }
+        if (req.method !== 'POST') {
+          sendJson(res, 405, { error: 'method not allowed' });
+          return;
+        }
+        let body;
+        try {
+          body = await readJsonBody(req);
+        } catch (err) {
+          sendJson(res, 400, { error: err.message });
+          return;
+        }
+        const enable = body.enabled === true;
+        try {
+          if (pathname === '/api/mobile/lan') {
+            if (enable) await enableLan();
+            else await disableLan();
+          } else {
+            if (enable) await startTunnel();
+            else await stopTunnel();
+          }
+        } catch (err) {
+          sendJson(res, 500, { error: err.message });
+          return;
+        }
+        sendJson(res, 200, mobileStatus());
+        return;
+      }
+
       if (pathname === '/api/events') {
         res.writeHead(200, {
           'Content-Type': 'text/event-stream',
@@ -449,6 +593,222 @@ export async function startServer({ root, port = 9345, distDir, autoIncrementLim
       if (!res.headersSent) sendJson(res, 500, { error: 'internal error' });
       else res.end();
     }
+  };
+
+  // ---- phone access --------------------------------------------------------
+  //
+  // A second listener (0.0.0.0, default port 9346) serves phones. Every
+  // request on it needs the pairing token; there is deliberately no loopback
+  // exemption because cloudflared's proxy also connects from 127.0.0.1.
+  let lanServer = null;
+  let lanHosts = new Set();
+  // The mobile listener may run for the tunnel alone. `lanAdvertised` tracks
+  // what the user actually asked for: Wi-Fi sharing (and its QR) is only
+  // reported when started explicitly, never as a side effect of the tunnel.
+  let lanAdvertised = false;
+  let listener = { running: false, port: null, urls: [] };
+  let tunnelState = { state: 'off', url: null, bytes: 0, total: null, error: null };
+  let tunnelStop = null;
+  let tunnelHost = null;
+  let tunnelGen = 0;
+
+  function mobileAllowedHost(header) {
+    if (!header) return false;
+    try {
+      const hostname = new URL('http://' + header).hostname.replace(/^\[|\]$/g, '').toLowerCase();
+      if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') return true;
+      if (tunnelHost && hostname === tunnelHost) return true;
+      return lanHosts.has(hostname);
+    } catch {
+      return false;
+    }
+  }
+
+  function handlePair(req, res, url) {
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      sendJson(res, 405, { error: 'method not allowed' });
+      return;
+    }
+    if (!tokenEquals(url.searchParams.get('t'))) {
+      sendJson(res, 403, { error: 'invalid access code' });
+      return;
+    }
+    res.writeHead(302, {
+      Location: '/',
+      'Set-Cookie': `${PAIR_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax`,
+      'Cache-Control': 'no-store',
+    });
+    res.end();
+  }
+
+  function unauthenticated(res, pathname) {
+    if (pathname.startsWith('/api/')) {
+      sendJson(res, 401, { error: 'pairing required' });
+    } else {
+      res.writeHead(401, {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-store',
+      });
+      res.end(PAIR_REQUIRED_PAGE);
+    }
+  }
+
+  const mobileGuard = (req, res) => {
+    if (!mobileAllowedHost(req.headers.host)) {
+      sendJson(res, 403, { error: 'forbidden host' });
+      return;
+    }
+    let url;
+    try {
+      url = new URL(req.url, 'http://127.0.0.1');
+    } catch {
+      sendJson(res, 400, { error: 'bad request' });
+      return;
+    }
+    if (url.pathname === '/pair') {
+      handlePair(req, res, url);
+      return;
+    }
+    if (!hasPairCookie(req)) {
+      unauthenticated(res, url.pathname);
+      return;
+    }
+    handle(req, res, 'mobile').catch(() => {
+      if (!res.headersSent) res.destroy();
+    });
+  };
+
+  function mobileStatus() {
+    const pair = (u) => `${u}/pair?t=${token}`;
+    return {
+      token,
+      lan: {
+        enabled: lanAdvertised,
+        port: listener.running ? listener.port : null,
+        urls: lanAdvertised ? listener.urls.map(pair) : [],
+      },
+      tunnel: {
+        state: tunnelState.state,
+        url: tunnelState.url ? pair(tunnelState.url) : null,
+        bytes: tunnelState.bytes,
+        total: tunnelState.total,
+        error: tunnelState.error,
+      },
+    };
+  }
+
+  // Bring the mobile listener up (idempotent). Silent by design: it is an
+  // implementation detail shared by Wi-Fi sharing and the tunnel.
+  async function startListener() {
+    if (listener.running) return;
+    const server = http.createServer(mobileGuard);
+    const actualPort = await listen(server, mobilePort, autoIncrementLimit, '0.0.0.0');
+    const addresses = lanIpv4Addresses();
+    lanServer = server;
+    lanHosts = new Set(addresses);
+    listener = {
+      running: true,
+      port: actualPort,
+      urls: addresses.map((ip) => `http://${ip}:${actualPort}`),
+    };
+  }
+
+  async function stopListener() {
+    listener = { running: false, port: null, urls: [] };
+    lanHosts = new Set();
+    const server = lanServer;
+    lanServer = null;
+    if (server) {
+      // Mobile clients may hold SSE streams open; end them so close() returns.
+      // Desktop clients transparently reconnect.
+      for (const res of sseClients) res.end();
+      server.close();
+      server.closeAllConnections?.();
+    }
+  }
+
+  async function enableLan() {
+    if (lanAdvertised) return;
+    await startListener();
+    lanAdvertised = true;
+    if (listener.urls.length === 0) {
+      console.warn('readingroom: no network address found — phones must use the tunnel');
+    } else {
+      console.log(`readingroom: phone access on — ${listener.urls[0]}/pair?t=${token}`);
+    }
+  }
+
+  async function disableLan() {
+    const wasAdvertised = lanAdvertised;
+    lanAdvertised = false;
+    // stopTunnel tears the listener down too when nothing else needs it.
+    await stopTunnel();
+    if (listener.running) await stopListener();
+    if (wasAdvertised) console.log('readingroom: phone access off');
+  }
+
+  function setTunnel(patch) {
+    tunnelState = { ...tunnelState, ...patch };
+  }
+
+  // Kicks the work off and returns; progress and errors land in the tunnel
+  // state that GET /api/mobile reports. The listener it needs comes up
+  // silently — Wi-Fi sharing is only reported when started explicitly.
+  async function startTunnel() {
+    await startListener();
+    if (tunnelState.state === 'on' || tunnelState.state === 'downloading' || tunnelState.state === 'starting') {
+      return;
+    }
+    const gen = ++tunnelGen;
+    setTunnel({ state: 'downloading', url: null, bytes: 0, total: null, error: null });
+    startTunnelImpl({
+      targetPort: listener.port,
+      onProgress: (p) => {
+        if (gen !== tunnelGen) return;
+        if (p.phase === 'downloading') setTunnel({ state: 'downloading', bytes: p.bytes, total: p.total });
+        else if (p.phase === 'starting') setTunnel({ state: 'starting' });
+      },
+      onUnexpectedExit: (message) => {
+        if (gen !== tunnelGen) return;
+        setTunnel({ state: 'error', url: null, error: message });
+      },
+    }).then(
+      ({ url, host, stop }) => {
+        if (gen !== tunnelGen) {
+          stop();
+          return;
+        }
+        tunnelStop = stop;
+        tunnelHost = host;
+        setTunnel({ state: 'on', url, error: null });
+        console.log(`readingroom: tunnel ready — ${url}/pair?t=${token}`);
+      },
+      (err) => {
+        if (gen !== tunnelGen) return;
+        setTunnel({ state: 'error', error: err.message });
+      },
+    );
+  }
+
+  async function stopTunnel() {
+    tunnelGen += 1; // invalidate any in-flight start
+    tunnelHost = null;
+    const stop = tunnelStop;
+    tunnelStop = null;
+    setTunnel({ state: 'off', url: null, error: null, bytes: 0, total: null });
+    if (stop) await stop();
+    // If the listener only existed for the tunnel, bring the whole thing down.
+    if (!lanAdvertised && listener.running) await stopListener();
+  }
+
+  const server = http.createServer((req, res) => {
+    if (!loopbackHost(req.headers.host)) {
+      sendJson(res, 403, { error: 'forbidden host' });
+      return;
+    }
+    handle(req, res, 'local').catch(() => {
+      if (!res.headersSent) res.destroy();
+    });
   });
 
   const actualPort = await listen(server, port, autoIncrementLimit);
@@ -460,11 +820,25 @@ export async function startServer({ root, port = 9345, distDir, autoIncrementLim
     root: rootAbs,
     tree: () => cachedTree,
     liveReload: watcher !== null,
+    mobile: {
+      status: mobileStatus,
+      enableLan,
+      disableLan,
+      startTunnel,
+      stopTunnel,
+    },
     close() {
       clearTimeout(rescanTimer);
       clearInterval(heartbeat);
       watcher?.close();
       for (const res of sseClients) res.end();
+      if (lanServer) {
+        lanServer.close();
+        lanServer.closeAllConnections?.();
+      }
+      // stop() dispatches SIGTERM synchronously, so the child dies even if
+      // the process exits immediately after close().
+      tunnelStop?.();
       server.close();
     },
   };

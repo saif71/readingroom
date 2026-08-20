@@ -10,7 +10,7 @@ import {
   avatarColor,
 } from "../format";
 
-const STORAGE_KEY = "readingroom-inspector";
+const STORAGE_KEY = "readingroom-inspector-tab";
 const REF_RE = /^[0-9a-f]{7,40}$/i;
 
 function loadPrefs() {
@@ -245,20 +245,23 @@ function HistoryTab({ path, refSha, refreshKey, onNavigateVersion }) {
 
 /**
  * Right-hand inspector for the open file: Info (metadata) and History (git
- * timeline). Collapses to a thin rail; open/tab state persists in
- * localStorage. `refSha` highlights the commit being viewed in the Viewer.
+ * timeline). Collapses to a thin rail (or a drawer on mobile); open state is
+ * controlled by App, the tab choice persists in localStorage. `refSha`
+ * highlights the commit being viewed in the Viewer.
  */
 export default function Inspector({
   path,
   refSha,
   refreshKey,
   onNavigateVersion,
+  open,
+  onToggleOpen,
+  mobile,
 }) {
-  const [prefs, setPrefs] = useState(loadPrefs); // { open?: bool, tab?: 'info'|'history' }
+  const [prefs, setPrefs] = useState(loadPrefs); // { tab?: 'info'|'history' }
   const [repo, setRepo] = useState({ status: "loading" });
   const [meta, setMeta] = useState({ status: "loading" });
 
-  const open = prefs.open !== false;
   const tab = prefs.tab === "history" ? "history" : "info";
 
   const setPref = (patch) => {
@@ -296,11 +299,14 @@ export default function Inspector({
     };
   }, [path, refreshKey]);
 
+  // On mobile a closed inspector is fully hidden; it is reopened from the top bar.
+  if (!open && mobile) return null;
+
   if (!open) {
     return (
-      <aside className="flex h-full w-10 shrink-0 flex-col items-center border-l border-neutral-200 bg-zinc-100 py-3 dark:border-neutral-800 dark:bg-zinc-800">
+      <aside className="flex h-full w-10 shrink-0 flex-col items-center border-l border-neutral-200 bg-zinc-100 py-3 dark:border-neutral-800 dark:bg-neutral-800">
         <button
-          onClick={() => setPref({ open: true })}
+          onClick={() => onToggleOpen(true)}
           title="Show inspector"
           aria-label="Show inspector"
           className="rounded-md p-1.5 text-neutral-500 transition-colors hover:bg-neutral-200/60 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-800/60 dark:hover:text-neutral-200"
@@ -323,7 +329,21 @@ export default function Inspector({
   }
 
   return (
-    <aside className="flex h-full w-72 shrink-0 flex-col border-l border-neutral-200 bg-zinc-100 dark:border-neutral-800 dark:bg-zinc-800 sm:w-80">
+    <>
+      {mobile && (
+        <div
+          className="fixed inset-0 z-30 bg-black/40"
+          onClick={() => onToggleOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+      <aside
+        className={`${
+          mobile
+            ? "fixed inset-y-0 right-0 z-40 w-72 max-w-[85vw] border-l shadow-xl"
+            : "w-72 shrink-0 border-l sm:w-80"
+        } flex h-full flex-col border-neutral-200 bg-zinc-100 dark:border-neutral-800 dark:bg-neutral-800`}
+      >
       <div className="space-y-2 border-b border-neutral-200 px-3 pb-2.5 pt-3 dark:border-neutral-800">
         <div className="flex items-center gap-1.5 justify-between">
           <Segmented
@@ -335,7 +355,7 @@ export default function Inspector({
             ]}
           />
           <button
-            onClick={() => setPref({ open: false })}
+            onClick={() => onToggleOpen(false)}
             title="Hide inspector"
             aria-label="Hide inspector"
             className="shrink-0 rounded-md p-1.5 text-neutral-500 transition-colors hover:bg-neutral-200/60 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-800/60 dark:hover:text-neutral-200"
@@ -410,6 +430,7 @@ export default function Inspector({
           />
         )}
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }
