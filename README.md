@@ -1,6 +1,6 @@
 # Zero-config doc browser for your codebase.
 
-![cover](https://raw.githubusercontent.com/saif71/readingroom/main/cover.png)
+![cover](https://raw.githubusercontent.com/saif71/readingroom/main/cover-expanded.png)
 
 One command, and every `.md`, `.txt`, image, and PDF file in your project is browsable in a clean UI - no files touched, nothing installed into your repo.
 
