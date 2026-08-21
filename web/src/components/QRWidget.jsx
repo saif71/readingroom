@@ -257,7 +257,7 @@ export default function QRWidget({ onClose }) {
 
         {data && (
           <div className="space-y-4">
-            <div className="grid gap-3 grid-col-1 lg:grid-cols-2">
+            <div className="grid gap-4 grid-col-1 lg:grid-cols-2">
               <Section title="Same Wi-Fi" icon={<WifiIcon />}>
                 {!data.lan.enabled ? (
                   <div className="space-y-2.5">

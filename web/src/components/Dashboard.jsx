@@ -3,6 +3,7 @@ import FileTypesWidget from "./FileTypesWidget";
 import OverviewWidget from "./OverviewWidget";
 import RankedFilesWidget from "./RankedFilesWidget";
 import QRWidget from "./QRWidget";
+import folderIcon from "../icons/folder.svg";
 
 const CATEGORIES = [
   "markdown",
@@ -91,6 +92,11 @@ export default function Dashboard({ tree, data, error, loading, onOpen }) {
       <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-100">
+            <img
+              src={folderIcon}
+              alt="Folder icon"
+              className="inline-block w-8 h-8 mr-2"
+            />
             {tree.name} overview
           </h1>
           <p className="mt-2 max-w-2xl text-sm text-neutral-500 dark:text-neutral-400">

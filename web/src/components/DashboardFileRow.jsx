@@ -1,11 +1,27 @@
-import { formatDateTime, timeAgo } from '../format';
+import { formatDateTime, timeAgo } from "../format";
 
-const CATEGORY_LABELS = { markdown: 'Markdown', text: 'Text', images: 'Image', pdfs: 'PDF', json: 'JSON', code: 'Code', other: 'Other' };
-const CATEGORY_BADGES = { markdown: 'md', text: 'txt', images: 'img', pdfs: 'pdf', json: '{}', code: '</>', other: '?' };
+const CATEGORY_LABELS = {
+  markdown: "Markdown",
+  text: "Text",
+  images: "Image",
+  pdfs: "PDF",
+  json: "JSON",
+  code: "Code",
+  other: "Other",
+};
+const CATEGORY_BADGES = {
+  markdown: "md",
+  text: "txt",
+  images: "img",
+  pdfs: "pdf",
+  json: "{}",
+  code: "</>",
+  other: "?",
+};
 
 export default function DashboardFileRow({ file, onOpen }) {
   const exactTime = formatDateTime(file.updatedAt);
-  const source = file.updatedSource === 'git' ? 'Git' : 'filesystem';
+  const source = file.updatedSource === "git" ? "Git" : "filesystem";
   const label = `${file.path}. Updated ${exactTime} from ${source}.`;
 
   return (
@@ -24,11 +40,18 @@ export default function DashboardFileRow({ file, onOpen }) {
           <span className="block truncate text-sm font-medium text-neutral-800 group-hover:text-sky-700 dark:text-neutral-200 dark:group-hover:text-sky-300">
             {file.name}
           </span>
-          <span className="block truncate text-xs text-neutral-400">{file.path}</span>
+          <span className="block truncate text-xs text-neutral-400">
+            {file.path}
+          </span>
         </span>
-        <span className="shrink-0 text-right text-xs text-neutral-400" title={exactTime}>
-          <span className="block">{timeAgo(file.updatedAt) || 'unknown'}</span>
-          <span className="block text-[10px]">{CATEGORY_LABELS[file.category] || file.category || 'Other'}</span>
+        <span
+          className="shrink-0 text-right text-xs text-neutral-400"
+          title={exactTime}
+        >
+          <span className="block">{timeAgo(file.updatedAt) || "unknown"}</span>
+          <span className="block text-[10px] hidden">
+            {CATEGORY_LABELS[file.category] || file.category || "Other"}
+          </span>
         </span>
       </button>
     </li>

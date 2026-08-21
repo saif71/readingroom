@@ -3,6 +3,7 @@ import Tree from "./Tree";
 import Segmented from "./Segmented";
 import { fuzzyMatch } from "../fuzzy";
 import { useTheme } from "../theme";
+import folderIcon from "../icons/folder.svg";
 
 function flattenFiles(node, out = []) {
   for (const child of node.children || []) {
@@ -190,6 +191,26 @@ export default function Sidebar({
     return (
       <aside className="flex h-full w-10 shrink-0 flex-col items-center border-r border-neutral-200 bg-zinc-100 py-3 dark:border-neutral-800 dark:bg-neutral-800">
         <button
+          onClick={() => (window.location.href = "/")}
+          title="home"
+          aria-label="home"
+          className="rounded-md p-1.5 text-neutral-500 transition-colors hover:bg-neutral-200/60 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700/60 dark:hover:text-neutral-200 cursor-pointer"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            className="h-4 w-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" />
+            <path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+          </svg>
+        </button>
+        <button
           onClick={() => onToggleOpen(true)}
           title="Show file tree"
           aria-label="Show file tree"
@@ -247,15 +268,22 @@ export default function Sidebar({
         className={`${
           mobile
             ? "fixed inset-y-0 left-0 z-40 w-72 max-w-[85vw] shadow-xl"
-            : "w-72 shrink-0 border-r border-neutral-200 sm:w-80"
+            : "w-72 shrink-0  sm:w-80"
         } flex h-full flex-col bg-zinc-100 dark:border-neutral-800 dark:bg-neutral-800`}
       >
         <div className="px-3 pb-2 pt-3">
           <div className="flex items-center gap-2 px-1 pb-2">
-            <span className="font-semibold tracking-tight">readingroom</span>
-            <span className="truncate text-xs text-neutral-400">
-              {tree ? `${tree.count} files` : "…"}
+            <span className="font-semibold tracking-tight flex items-center">
+              <img
+                src={folderIcon}
+                alt="Folder icon"
+                className="inline-block w-4 h-4 mr-2"
+              />
+              readingroom
             </span>
+            {/* <span className="truncate text-xs text-neutral-400">
+              {tree ? `${tree.count} files` : "…"}
+            </span> */}
             <button
               onClick={() => (window.location.href = "/")}
               title="home"
