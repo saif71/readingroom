@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import AgentInstructionsWidget from "./AgentInstructionsWidget";
+import CommandsWidget from "./CommandsWidget";
 import FileTypesWidget from "./FileTypesWidget";
 import OverviewWidget from "./OverviewWidget";
 import RankedFilesWidget from "./RankedFilesWidget";
@@ -34,6 +35,16 @@ const AGENT_INSTRUCTION_PATH_RES = [
   /^\.github\/instructions\/[^/]+\.instructions\.md$/,
 ];
 const SKILL_FILE_RE = /^\.(claude|agents|cursor)\/skills\/([^/]+)\/SKILL\.md$/;
+const COMMAND_FILE_RE = /^\.(claude|agents|cursor)\/commands\/([^/]+)\.md$/;
+const PROMPT_FILE_RE = /^\.github\/prompts\/([^/]+)\.md$/;
+
+function commandMeta(filePath) {
+  const match = COMMAND_FILE_RE.exec(filePath);
+  if (match) return { name: match[2], sourceDir: `.${match[1]}` };
+  const prompt = PROMPT_FILE_RE.exec(filePath);
+  if (prompt) return { name: prompt[1], sourceDir: ".github" };
+  return null;
+}
 
 function isAgentInstructionFile(filePath) {
   if (AGENT_INSTRUCTION_NAMES.has(filePath.split("/").pop())) return true;
@@ -95,6 +106,22 @@ function fallbackDashboard(tree) {
         : [];
     })
     .sort((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path));
+  const commands = rows
+    .flatMap((file) => {
+      const meta = commandMeta(file.path);
+      return meta
+        ? [
+            {
+              ...meta,
+              description: null,
+              path: file.path,
+              size: file.size,
+              updatedAt: file.updatedAt,
+            },
+          ]
+        : [];
+    })
+    .sort((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path));
 
   return {
     fileCount: files.length,
@@ -118,6 +145,7 @@ function fallbackDashboard(tree) {
       .slice(0, 10),
     agentInstructions,
     skills,
+    commands,
   };
 }
 
@@ -189,6 +217,7 @@ export default function Dashboard({ tree, data, error, loading, onOpen }) {
             </div>
             <div className="grid-2 space-y-4">
               <SkillsWidget skills={model.skills || []} onOpen={onOpen} />
+              <CommandsWidget commands={model.commands || []} onOpen={onOpen} />
               <QRWidget />
               <RankedFilesWidget
                 title="Recently updated"

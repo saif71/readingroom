@@ -515,6 +515,12 @@ try {
   writeIn(aiFixture, '.agents/skills/expo-tailwind-setup/SKILL.md', '---\nname: expo-tailwind-setup\ndescription: >\n  Set up Tailwind CSS v4 in Expo\n  with NativeWind.\n---\n\n# Expo setup\n');
   writeIn(aiFixture, '.agents/skills/no-frontmatter/SKILL.md', '# Skill without frontmatter\n');
   writeIn(aiFixture, '.claude/skills/broken/SKILL.md', 'unreadable is fine too\n');
+  writeIn(aiFixture, '.claude/commands/deploy.md', '---\ndescription: Deploy the staging stack\nallowed-tools: Bash\n---\n\nDeploy $ARGUMENTS to staging.\n');
+  writeIn(aiFixture, '.cursor/commands/refactor.md', '# Refactor command without frontmatter\n');
+  writeIn(aiFixture, '.github/prompts/explain.md', '---\ndescription: >\n  Explain this code\n  in simple terms.\n---\n\nExplain $Selection.\n');
+  writeIn(aiFixture, '.agents/commands/review.md', 'Review the diff for $ARGUMENTS.\n');
+  writeIn(aiFixture, '.claude/commands/nested/deep.md', 'nested command files are not matched\n');
+  writeIn(aiFixture, '.github/prompts/notes.txt', 'not a markdown prompt\n');
 
   const aapp = await startServer({ root: aiFixture, port: 0, distDir: path.resolve('dist'), openFile: async () => true });
   try {
@@ -556,6 +562,27 @@ try {
       'skill-like files outside skills directories are not skills',
       !dash.skills.some((skill) => skill.path === 'docs/SKILL.md') && !dash.agentInstructions.some((file) => file.path === 'docs/random.md'),
       JSON.stringify({ skills: dash.skills.map((s) => s.path), instr: instrPaths }),
+    );
+
+    const byCommandName = Object.fromEntries(dash.commands.map((command) => [command.name, command]));
+    check(
+      '/api/dashboard lists custom commands with parsed frontmatter descriptions',
+      Object.keys(byCommandName).sort().join(',') === 'deploy,explain,refactor,review' &&
+        byCommandName['deploy'].sourceDir === '.claude' &&
+        byCommandName['deploy'].description === 'Deploy the staging stack' &&
+        byCommandName['deploy'].path === '.claude/commands/deploy.md' &&
+        byCommandName['review'].sourceDir === '.agents' &&
+        byCommandName['refactor'].sourceDir === '.cursor' &&
+        byCommandName['refactor'].description === null &&
+        byCommandName['explain'].sourceDir === '.github' &&
+        byCommandName['explain'].description === 'Explain this code in simple terms.',
+      JSON.stringify(dash.commands),
+    );
+
+    check(
+      'nested command files and non-markdown prompts are not commands',
+      !dash.commands.some((command) => command.path === '.claude/commands/nested/deep.md' || command.path === '.github/prompts/notes.txt'),
+      JSON.stringify(dash.commands.map((command) => command.path)),
     );
   } finally {
     await aapp.close();

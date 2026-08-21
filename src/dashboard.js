@@ -27,14 +27,28 @@ const AGENT_INSTRUCTION_PATH_RES = [
 // A skill is a folder directly under a skills directory containing SKILL.md.
 const SKILL_FILE_RE = /^\.(claude|agents|cursor)\/skills\/([^/]+)\/SKILL\.md$/;
 
+// A custom slash command is a top-level .md file in a commands directory;
+// .github/prompts is GitHub Copilot's prompt location.
+const COMMAND_FILE_RE = /^\.(claude|agents|cursor)\/commands\/([^/]+)\.md$/;
+const PROMPT_FILE_RE = /^\.github\/prompts\/([^/]+)\.md$/;
+
 function isAgentInstructionFile(rel) {
   if (AGENT_INSTRUCTION_NAMES.has(rel.split('/').pop())) return true;
   return AGENT_INSTRUCTION_PATH_RES.some((re) => re.test(rel));
 }
 
-// Extract `description:` from SKILL.md YAML frontmatter. Single-line and
-// block-scalar (>, |) forms are supported; anything else degrades to null.
-function parseSkillDescription(text) {
+function commandMeta(rel) {
+  const match = COMMAND_FILE_RE.exec(rel);
+  if (match) return { name: match[2], sourceDir: `.${match[1]}` };
+  const prompt = PROMPT_FILE_RE.exec(rel);
+  if (prompt) return { name: prompt[1], sourceDir: '.github' };
+  return null;
+}
+
+// Extract `description:` from YAML frontmatter (SKILL.md, command files).
+// Single-line and block-scalar (>, |) forms are supported; anything else
+// degrades to null.
+function parseFrontmatterDescription(text) {
   const lines = text.split(/\r?\n/);
   let inFrontmatter = false;
   for (let i = 0; i < lines.length; i++) {
@@ -59,9 +73,9 @@ function parseSkillDescription(text) {
   return null;
 }
 
-function skillDescription(rootAbs, rel) {
+function frontmatterDescription(rootAbs, rel) {
   try {
-    return parseSkillDescription(readFileSync(path.join(rootAbs, rel), 'utf8').slice(0, 4096));
+    return parseFrontmatterDescription(readFileSync(path.join(rootAbs, rel), 'utf8').slice(0, 4096));
   } catch {
     return null;
   }
@@ -154,7 +168,21 @@ export async function buildDashboard(tree, rootAbs) {
       return [{
         name: match[2],
         sourceDir: `.${match[1]}`,
-        description: skillDescription(rootAbs, file.path),
+        description: frontmatterDescription(rootAbs, file.path),
+        path: file.path,
+        size: file.size,
+        updatedAt: isoFromMtime(file.mtime),
+      }];
+    })
+    .sort((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path));
+
+  const commands = files
+    .flatMap((file) => {
+      const meta = commandMeta(file.path);
+      if (!meta) return [];
+      return [{
+        ...meta,
+        description: frontmatterDescription(rootAbs, file.path),
         path: file.path,
         size: file.size,
         updatedAt: isoFromMtime(file.mtime),
@@ -172,5 +200,6 @@ export async function buildDashboard(tree, rootAbs) {
     oldest,
     agentInstructions,
     skills,
+    commands,
   };
 }
