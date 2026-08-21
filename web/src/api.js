@@ -1,6 +1,15 @@
-const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.avif', '.svg']);
+const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.avif', '.svg', '.ico']);
 const PDF_EXTS = new Set(['.pdf']);
-const TEXT_EXTS = new Set(['.md', '.markdown', '.txt']);
+const MARKDOWN_EXTS = new Set(['.md', '.markdown']);
+const TEXT_EXTS = new Set(['.txt', '.text', '.log']);
+const JSON_EXTS = new Set(['.json', '.jsonc']);
+const CODE_EXTS = new Set([
+  '.c', '.cc', '.cpp', '.cs', '.css', '.go', '.h', '.hpp', '.html', '.htm',
+  '.java', '.js', '.jsx', '.mjs', '.cjs', '.kt', '.kts', '.lua', '.php',
+  '.py', '.rb', '.rs', '.sh', '.sql', '.swift', '.ts', '.tsx', '.vue',
+  '.xml', '.xhtml', '.yaml', '.yml', '.toml', '.ini', '.conf', '.env',
+]);
+const CODE_NAMES = new Set(['dockerfile', 'makefile', 'justfile']);
 
 function extensionOf(p) {
   const dot = p.lastIndexOf('.');
@@ -16,7 +25,20 @@ export function isPdfPath(p) {
 }
 
 export function isTextPath(p) {
-  return TEXT_EXTS.has(extensionOf(p));
+  const category = fileCategoryForPath(p);
+  return category === 'markdown' || category === 'text';
+}
+
+export function fileCategoryForPath(p) {
+  const ext = extensionOf(p);
+  const name = p.split('/').pop().toLowerCase();
+  if (MARKDOWN_EXTS.has(ext)) return 'markdown';
+  if (IMAGE_EXTS.has(ext)) return 'images';
+  if (PDF_EXTS.has(ext)) return 'pdfs';
+  if (TEXT_EXTS.has(ext)) return 'text';
+  if (JSON_EXTS.has(ext)) return 'json';
+  if (CODE_EXTS.has(ext) || CODE_NAMES.has(name)) return 'code';
+  return 'unknown';
 }
 
 export async function openInSystemApp(path) {

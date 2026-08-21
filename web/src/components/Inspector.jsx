@@ -22,6 +22,7 @@ function loadPrefs() {
 }
 
 const KIND_LABELS = { md: "Markdown", txt: "Text", img: "Image", pdf: "PDF" };
+const CATEGORY_LABELS = { markdown: "Markdown", images: "Images", pdfs: "PDFs", text: "Text", json: "JSON", code: "Code", other: "Other" };
 const STATUS_LABELS = { A: "added", M: "modified", R: "renamed", D: "deleted" };
 const STATUS_STYLES = {
   A: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
@@ -107,7 +108,7 @@ function InfoTab({ meta }) {
           <span className="font-mono">{file.path}</span>
         </Row>
         {file.kind && (
-          <Row label="Type">{KIND_LABELS[file.kind] || file.kind}</Row>
+          <Row label="Type">{CATEGORY_LABELS[file.category] || KIND_LABELS[file.kind] || file.category || file.kind}</Row>
         )}
         <Row label="Size">{formatBytes(file.size)}</Row>
         <Row

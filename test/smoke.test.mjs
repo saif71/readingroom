@@ -59,23 +59,30 @@ write('photo.JPG', Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]));
 write('logo.svg', '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"></svg>');
 write('pic.webp', Buffer.from([0x52, 0x49, 0x46, 0x46, 0x24, 0x00, 0x00, 0x00]));
 write('script.js', 'console.log("hello");\n');
+write('config.json', '{"name":"readingroom"}\n');
+write('blob.bin', Buffer.from([0x00, 0x01, 0x02, 0xff, 0xd8]));
 mkdirSync(path.join(fixture, 'empty'));
 symlinkSync(path.join(fixture, 'README.md'), path.join(fixture, 'link.md'));
 
 const EXPECTED = [
   '.github/workflows/ci.md',
+  '.gitignore',
   'NOTES.MD',
   'README.md',
   'big.md',
+  'blob.bin',
+  'config.json',
   'doc.pdf',
   'docs/api.txt',
   'docs/guide.md',
   'img.png',
   'logo.svg',
   'nested/keep.md',
+  'nested/.gitignore',
   'notas-日本語.md',
   'photo.JPG',
   'pic.webp',
+  'script.js',
 ];
 
 let failures = 0;
@@ -93,14 +100,15 @@ try {
   const base = app.url;
 
   try {
-    // 1. Tree contains exactly the expected documents.
+    // 1. Tree contains every non-ignored file, including source/config/binary files.
     const paths = flattenTree(app.tree()).map((node) => node.path).sort();
     check('tree lists exactly the expected files', JSON.stringify(paths) === JSON.stringify([...EXPECTED].sort()), JSON.stringify(paths));
 
-    // 2. /api/tree endpoint matches, with per-file kinds.
+    // 2. /api/tree endpoint matches, with per-file kinds and categories.
     const treeRes = await fetch(`${base}/api/tree`);
     const tree = await treeRes.json();
     const kindByPath = Object.fromEntries(flattenTree(tree).map((node) => [node.path, node.kind]));
+    const categoryByPath = Object.fromEntries(flattenTree(tree).map((node) => [node.path, node.category]));
     check(
       '/api/tree responds with the tree',
       treeRes.ok &&
@@ -109,8 +117,21 @@ try {
         kindByPath['docs/api.txt'] === 'txt' &&
         kindByPath['img.png'] === 'img' &&
         kindByPath['logo.svg'] === 'img' &&
-        kindByPath['doc.pdf'] === 'pdf',
+        kindByPath['doc.pdf'] === 'pdf' &&
+        categoryByPath['config.json'] === 'json' &&
+        categoryByPath['script.js'] === 'code' &&
+        categoryByPath['blob.bin'] === 'other',
       `count=${tree.count}`
+    );
+    const codeFiles = flattenTree(tree).filter((node) => node.category === 'code');
+    const jsonFiles = flattenTree(tree).filter((node) => node.category === 'json');
+    check(
+      'file categories filter the complete tree for chips',
+      codeFiles.some((node) => node.path === 'script.js') &&
+        codeFiles.every((node) => node.category === 'code') &&
+        jsonFiles.some((node) => node.path === 'config.json') &&
+        jsonFiles.every((node) => node.category === 'json'),
+      JSON.stringify({ code: codeFiles.map((node) => node.path), json: jsonFiles.map((node) => node.path) })
     );
 
     // 2b. Dashboard aggregates the full non-ignored inventory and degrades outside Git.
@@ -126,12 +147,14 @@ try {
         dashboard.fileCount === inventoryFiles.length &&
         dashboard.directoryCount === 4 &&
         dashboard.totalBytes === inventorySize &&
-        dashboard.byKind.md === 7 &&
-        dashboard.byKind.txt === 1 &&
-        dashboard.byKind.img === 4 &&
-        dashboard.byKind.pdf === 1 &&
-        dashboard.byKind.other === 3 &&
-        dashboard.totalBytes > surfacedSize,
+        dashboard.byCategory.markdown === 7 &&
+        dashboard.byCategory.text === 3 &&
+        dashboard.byCategory.images === 4 &&
+        dashboard.byCategory.pdfs === 1 &&
+        dashboard.byCategory.json === 1 &&
+        dashboard.byCategory.code === 1 &&
+        dashboard.byCategory.other === 1 &&
+        dashboard.totalBytes === surfacedSize,
       JSON.stringify(dashboard)
     );
     check(
@@ -153,15 +176,23 @@ try {
     const txt = await txtRes.json();
     check('/api/file returns txt kind', txtRes.ok && txt.kind === 'txt');
 
-    // 4. Large files are served — there is no size cap.
+    // 4. Large text files are listed but previews are capped server-side.
     const bigRes = await fetch(`${base}/api/file?p=big.md`);
     const big = await bigRes.json();
-    check('large file served in full (no size cap)', bigRes.ok && big.content.length === 3 * 1024 * 1024, `length=${big.content?.length}`);
+    check('large text preview is capped and marked truncated', bigRes.ok && big.truncated === true && big.content.length === 2 * 1024 * 1024, `length=${big.content?.length}`);
 
-    // 5. Non-doc extensions rejected.
+    // 5. Non-text files remain visible but return download-only metadata.
     const pngMetaRes = await fetch(`${base}/api/file?p=img.png`);
     const pdfMetaRes = await fetch(`${base}/api/file?p=doc.pdf`);
-    check('non-md/txt rejected from /api/file', pngMetaRes.status === 400 && pdfMetaRes.status === 400);
+    const binaryMetaRes = await fetch(`${base}/api/file?p=blob.bin`);
+    const pngMeta = await pngMetaRes.json();
+    const pdfMeta = await pdfMetaRes.json();
+    const binaryMeta = await binaryMetaRes.json();
+    check('binary and media files return download-only metadata', pngMetaRes.ok && pdfMetaRes.ok && binaryMetaRes.ok && pngMeta.previewable === false && pdfMeta.previewable === false && binaryMeta.previewable === false && binaryMeta.category === 'other');
+
+    const jsonRes = await fetch(`${base}/api/file?p=config.json`);
+    const jsonFile = await jsonRes.json();
+    check('JSON files return previewable text content', jsonRes.ok && jsonFile.previewable === true && jsonFile.category === 'json' && jsonFile.content.includes('readingroom'));
 
     // 6. Path traversal blocked.
     for (const p of ['../../etc/passwd', '%2e%2e%2f%2e%2e%2fetc%2fpasswd', '/etc/passwd', 'docs/../../link.md']) {
@@ -365,8 +396,8 @@ if (!gitAvailable) {
         gdash.gitAvailable === true &&
           gdash.fileCount === 4 &&
           gdash.directoryCount === 2 &&
-          gdash.byKind.md === 3 &&
-          gdash.byKind.img === 1 &&
+          gdash.byCategory.markdown === 3 &&
+          gdash.byCategory.images === 1 &&
           guideRecent?.updatedSource === 'git' &&
           guideRecent.updatedAt === guideCommitDate &&
           untrackedRecent?.updatedSource === 'filesystem',

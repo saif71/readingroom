@@ -1,6 +1,6 @@
 import { latestCommitDates } from './git.js';
 
-const KINDS = ['md', 'txt', 'img', 'pdf', 'other'];
+const CATEGORIES = ['markdown', 'images', 'pdfs', 'text', 'json', 'code', 'other'];
 const RANK_LIMIT = 10;
 
 function collectFiles(node, files = [], directories = []) {
@@ -24,6 +24,7 @@ function dashboardFile(file, updatedAt, updatedSource) {
     path: file.path,
     name: file.name,
     kind: file.kind,
+    category: file.category || 'other',
     size: file.size,
     updatedAt,
     updatedSource,
@@ -41,10 +42,11 @@ function byDate(direction) {
 /** Build the root dashboard from the full non-ignored inventory tree. */
 export async function buildDashboard(tree, rootAbs) {
   const { files, directories } = collectFiles(tree);
-  const byKind = Object.fromEntries(KINDS.map((kind) => [kind, 0]));
+  const byCategory = Object.fromEntries(CATEGORIES.map((category) => [category, 0]));
   let totalBytes = 0;
   for (const file of files) {
-    byKind[file.kind] = (byKind[file.kind] || 0) + 1;
+    const category = file.category || 'other';
+    byCategory[category] = (byCategory[category] || 0) + 1;
     totalBytes += file.size;
   }
 
@@ -78,7 +80,7 @@ export async function buildDashboard(tree, rootAbs) {
     fileCount: files.length,
     directoryCount: directories.length,
     totalBytes,
-    byKind,
+    byCategory,
     gitAvailable: gitDates !== null,
     recent,
     oldest,

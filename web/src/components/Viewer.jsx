@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { fetchFile, fetchVersion, isImagePath, isPdfPath, isTextPath, rawUrl, versionRawUrl, downloadUrl, versionDownloadUrl } from '../api';
+import { fetchFile, fetchVersion, fileCategoryForPath, isImagePath, isPdfPath, rawUrl, versionRawUrl, downloadUrl, versionDownloadUrl } from '../api';
 import { formatDate } from '../format';
 import MarkdownView from './MarkdownView';
 import TextView from './TextView';
 import ImageView from './ImageView';
 import PdfView from './PdfView';
+import CodeBlock from './CodeBlock';
 
 /**
  * Split a leading YAML frontmatter block off a markdown document.
@@ -77,6 +78,14 @@ function Header({ name, path, downloadUrl }) {
   );
 }
 
+function languageForPath(filePath) {
+  const name = filePath.split('/').pop().toLowerCase();
+  if (name === 'dockerfile') return 'dockerfile';
+  if (name === 'makefile' || name === 'justfile') return 'bash';
+  const ext = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1) : '';
+  return ext || 'plaintext';
+}
+
 /** Sticky-context banner shown whenever a historical version is displayed. */
 function VersionBanner({ version, onBack }) {
   const when = version.date ? formatDate(version.date) : 'an earlier commit';
@@ -112,13 +121,13 @@ export default function Viewer({ path, refSha, refreshKey, onNavigate }) {
   const [state, setState] = useState({ status: 'loading' });
   const isImage = isImagePath(path);
   const isPdf = isPdfPath(path);
-  const isUnsupported = !isImage && !isPdf && !isTextPath(path);
+  const pathCategory = fileCategoryForPath(path);
   const isVersion = refSha != null;
 
   useEffect(() => {
     // Binary kinds render straight from a URL — but a historical version
     // still fetches the JSON form so the banner has author/date/subject.
-    if ((isImage || isPdf || isUnsupported) && !isVersion) return;
+    if ((isImage || isPdf) && !isVersion) return;
     setState({ status: 'loading' });
     let alive = true;
     const load = isVersion ? fetchVersion(path, refSha) : fetchFile(path);
@@ -128,7 +137,7 @@ export default function Viewer({ path, refSha, refreshKey, onNavigate }) {
     return () => {
       alive = false;
     };
-  }, [path, refreshKey, isImage, isPdf, isUnsupported, isVersion, refSha]);
+  }, [path, refreshKey, isImage, isPdf, isVersion, refSha]);
 
   const sourceUrl = isVersion ? versionRawUrl(path, refSha) : rawUrl(path);
   const dlUrl = isVersion ? versionDownloadUrl(path, refSha) : downloadUrl(path);
@@ -162,22 +171,8 @@ export default function Viewer({ path, refSha, refreshKey, onNavigate }) {
     );
   }
 
-  if (isUnsupported) {
-    if (isVersion && state.status === 'loading') {
-      return (
-        <Centered>
-          <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-neutral-300 border-t-sky-500" />
-        </Centered>
-      );
-    }
-    if (isVersion && state.status === 'error') {
-      return (
-        <Centered>
-          <p className="font-medium text-neutral-500 dark:text-neutral-300">{path}</p>
-          <p className="mt-1">{state.message}</p>
-        </Centered>
-      );
-    }
+  const isDownloadOnly = state.status === 'ok' && state.file.previewable === false;
+  if (isDownloadOnly) {
     return (
       <div className="mx-auto max-w-3xl px-6 py-8 sm:px-10">
         {isVersion && <VersionBanner version={state.file} onBack={() => onNavigate(path)} />}
@@ -208,15 +203,25 @@ export default function Viewer({ path, refSha, refreshKey, onNavigate }) {
   }
 
   const { file } = state;
-  const [meta, body] = file.kind === 'md' ? splitFrontmatter(file.content ?? '') : [null, file.content ?? ''];
+  const category = file.category || pathCategory;
+  const [meta, body] = category === 'markdown' || file.kind === 'md'
+    ? splitFrontmatter(file.content ?? '')
+    : [null, file.content ?? ''];
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-8 sm:px-10">
       {isVersion && <VersionBanner version={file} onBack={() => onNavigate(path)} />}
       <Header name={file.name} path={file.path} downloadUrl={dlUrl} />
+      {file.truncated && (
+        <div className="not-prose mb-5 rounded-lg border border-amber-300/70 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+          Preview limited to {Math.round((file.previewLimit || file.previewBytes || 0) / 1024)} KiB. Download the file to view the complete contents.
+        </div>
+      )}
       {meta && Object.keys(meta).length > 0 && <Frontmatter meta={meta} />}
-      {file.kind === 'md' ? (
+      {category === 'markdown' || file.kind === 'md' ? (
         <MarkdownView path={file.path} content={body} onNavigate={onNavigate} />
+      ) : category === 'code' || category === 'json' ? (
+        <CodeBlock code={body} lang={languageForPath(file.path)} />
       ) : (
         <TextView content={body} />
       )}

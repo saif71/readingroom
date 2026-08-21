@@ -1,9 +1,9 @@
 import http from 'node:http';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { createReadStream, existsSync, readFileSync, statSync, watch } from 'node:fs';
+import { closeSync, createReadStream, existsSync, openSync, readFileSync, readSync, statSync, watch } from 'node:fs';
 import { networkInterfaces } from 'node:os';
 import path from 'node:path';
-import { scanTree, scanAllTree, fileKind, DEFAULT_IGNORED_DIRS } from './scanner.js';
+import { scanAllTree, fileCategory, fileKind, filePreview, DEFAULT_IGNORED_DIRS } from './scanner.js';
 import { openExternal } from './openBrowser.js';
 import { repoStatus, lastCommitFor, fileHistory, fileVersion, VersionNotFound } from './git.js';
 import { buildDashboard } from './dashboard.js';
@@ -92,6 +92,34 @@ const NOT_BUILT_PAGE = `<!doctype html>
 </body></html>`;
 
 const PAIR_COOKIE = 'rr_pair';
+const MAX_TEXT_PREVIEW_BYTES = 2 * 1024 * 1024;
+const MAX_CODE_PREVIEW_BYTES = 512 * 1024;
+
+function readTextPreview(abs, maxBytes = MAX_TEXT_PREVIEW_BYTES) {
+  let fd;
+  try {
+    fd = openSync(abs, 'r');
+    const buffer = Buffer.allocUnsafe(maxBytes);
+    const bytes = readSync(fd, buffer, 0, maxBytes, 0);
+    return { content: buffer.subarray(0, bytes).toString('utf8'), truncated: bytes < statSync(abs).size };
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
+function readFileSample(abs, maxBytes = 4096) {
+  let fd;
+  try {
+    fd = openSync(abs, 'r');
+    const buffer = Buffer.allocUnsafe(maxBytes);
+    const bytes = readSync(fd, buffer, 0, maxBytes, 0);
+    return buffer.subarray(0, bytes);
+  } catch {
+    return null;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
 
 // Served to unauthenticated visitors on the mobile listener. Deliberately
 // does not echo the token — only the paired desktop and QR URL know it.
@@ -178,8 +206,8 @@ export async function startServer({
     }
     return false;
   };
-  let cachedTree = scanTree(rootAbs);
-  let cachedInventory = scanAllTree(rootAbs);
+  let cachedTree = scanAllTree(rootAbs);
+  let cachedInventory = cachedTree;
   let lastTreeJson = JSON.stringify(cachedTree);
   let lastInventoryJson = JSON.stringify(cachedInventory);
   let dashboardCache = { inventoryJson: null, promise: null };
@@ -214,8 +242,8 @@ export async function startServer({
     clearTimeout(rescanTimer);
     rescanTimer = setTimeout(() => {
       try {
-        const next = scanTree(rootAbs);
-        const nextInventory = scanAllTree(rootAbs);
+        const next = scanAllTree(rootAbs);
+        const nextInventory = next;
         const treeJson = JSON.stringify(next);
         const inventoryJson = JSON.stringify(nextInventory);
         const treeChanged = treeJson !== lastTreeJson;
@@ -313,11 +341,6 @@ export async function startServer({
           sendJson(res, 403, { error: 'path outside root' });
           return;
         }
-        const kind = fileKind(path.basename(abs));
-        if (kind !== 'md' && kind !== 'txt') {
-          sendJson(res, 400, { error: 'only .md and .txt files can be opened as text' });
-          return;
-        }
         let st;
         try {
           st = statSync(abs);
@@ -329,14 +352,40 @@ export async function startServer({
           sendJson(res, 400, { error: 'not a file' });
           return;
         }
-        const content = readFileSync(abs, 'utf8');
+        const name = path.basename(abs);
+        const kind = fileKind(name);
+        const category = fileCategory(name, readFileSample(abs));
+        const preview = filePreview(name, category);
+        if (preview !== 'text') {
+          sendJson(res, 200, {
+            path: rel.replace(/\\/g, '/'),
+            name,
+            ext: path.extname(abs).toLowerCase(),
+            size: st.size,
+            mtime: st.mtimeMs,
+            kind: kind || 'other',
+            category,
+            preview,
+            previewable: false,
+            content: null,
+          });
+          return;
+        }
+        const previewLimit = category === 'code' || category === 'json' ? MAX_CODE_PREVIEW_BYTES : MAX_TEXT_PREVIEW_BYTES;
+        const { content, truncated } = readTextPreview(abs, previewLimit);
         sendJson(res, 200, {
           path: rel.replace(/\\/g, '/'),
-          name: path.basename(abs),
+          name,
           ext: path.extname(abs).toLowerCase(),
           size: st.size,
           mtime: st.mtimeMs,
-          kind,
+          kind: kind || 'other',
+          category,
+          preview,
+          previewable: true,
+          truncated,
+          previewBytes: Buffer.byteLength(content),
+          previewLimit,
           content,
         });
         return;
@@ -368,11 +417,12 @@ export async function startServer({
         const cleanRel = rel.replace(/\\/g, '/');
         const name = path.basename(abs);
         const kind = fileKind(name);
+        const category = fileCategory(name, readFileSample(abs));
         let words = null;
         let chars = null;
-        if (kind === 'md' || kind === 'txt') {
+        if (filePreview(name, category) === 'text' && st.size <= MAX_TEXT_PREVIEW_BYTES) {
           try {
-            const content = readFileSync(abs, 'utf8');
+            const content = readTextPreview(abs).content;
             words = (content.match(/\S+/g) || []).length;
             chars = content.length;
           } catch {
@@ -385,6 +435,9 @@ export async function startServer({
           name,
           ext: path.extname(abs).toLowerCase(),
           kind,
+          category,
+          preview: filePreview(name, category),
+          previewable: filePreview(name, category) === 'text' && st.size <= MAX_TEXT_PREVIEW_BYTES,
           size: st.size,
           mtime: st.mtimeMs,
           words,
@@ -445,6 +498,8 @@ export async function startServer({
         }
         const name = path.basename(abs);
         const kind = fileKind(name);
+        const category = fileCategory(name, version.buffer.subarray(0, 4096));
+        const preview = filePreview(name, category);
         if (url.searchParams.get('raw') === '1') {
           const type = mimeType(abs);
           res.writeHead(200, {
@@ -463,16 +518,21 @@ export async function startServer({
           res.end(version.buffer);
           return;
         }
-        const isText = kind === 'md' || kind === 'txt';
+        const isText = preview === 'text';
         const entry = version.entry;
+        const contentLimit = category === 'code' || category === 'json' ? MAX_CODE_PREVIEW_BYTES : MAX_TEXT_PREVIEW_BYTES;
+        const contentBuffer = isText ? version.buffer.subarray(0, contentLimit) : null;
         sendJson(res, 200, {
           path: rel.replace(/\\/g, '/'),
           name,
           ext: path.extname(abs).toLowerCase(),
           kind,
+          category,
+          preview,
           size: version.buffer.length,
           binary: !isText,
-          content: isText ? version.buffer.toString('utf8') : null,
+          content: contentBuffer ? contentBuffer.toString('utf8') : null,
+          truncated: Boolean(contentBuffer && contentBuffer.length < version.buffer.length),
           ref: entry ? entry.sha : ref,
           author: entry ? entry.author : null,
           date: entry ? entry.date : null,

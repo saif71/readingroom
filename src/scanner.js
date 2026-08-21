@@ -1,12 +1,21 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { closeSync, openSync, readFileSync, readSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 
-export const TEXT_EXTENSIONS = ['.md', '.txt'];
-export const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.avif', '.svg'];
+export const MARKDOWN_EXTENSIONS = ['.md', '.markdown'];
+export const TEXT_EXTENSIONS = ['.txt', '.text', '.log'];
+export const JSON_EXTENSIONS = ['.json', '.jsonc'];
+export const CODE_EXTENSIONS = [
+  '.c', '.cc', '.cpp', '.cs', '.css', '.go', '.h', '.hpp', '.html', '.htm',
+  '.java', '.js', '.jsx', '.mjs', '.cjs', '.kt', '.kts', '.lua', '.php',
+  '.py', '.rb', '.rs', '.sh', '.sql', '.swift', '.ts', '.tsx', '.vue',
+  '.xml', '.xhtml', '.yaml', '.yml', '.toml', '.ini', '.conf', '.env',
+];
+export const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.avif', '.svg', '.ico'];
 export const PDF_EXTENSIONS = ['.pdf'];
 
 const KIND_BY_EXT = new Map([
-  ...TEXT_EXTENSIONS.map((ext) => [ext, ext === '.txt' ? 'txt' : 'md']),
+  ...MARKDOWN_EXTENSIONS.map((ext) => [ext, 'md']),
+  ...TEXT_EXTENSIONS.map((ext) => [ext, 'txt']),
   ...IMAGE_EXTENSIONS.map((ext) => [ext, 'img']),
   ...PDF_EXTENSIONS.map((ext) => [ext, 'pdf']),
 ]);
@@ -38,8 +47,65 @@ export const DEFAULT_IGNORED_DIRS = new Set([
 
 const MAX_DEPTH = 40;
 
+const CATEGORY_BY_EXT = new Map([
+  ...MARKDOWN_EXTENSIONS.map((ext) => [ext, 'markdown']),
+  ...TEXT_EXTENSIONS.map((ext) => [ext, 'text']),
+  ...JSON_EXTENSIONS.map((ext) => [ext, 'json']),
+  ...CODE_EXTENSIONS.map((ext) => [ext, 'code']),
+  ...IMAGE_EXTENSIONS.map((ext) => [ext, 'images']),
+  ...PDF_EXTENSIONS.map((ext) => [ext, 'pdfs']),
+]);
+
+const CATEGORY_BY_NAME = new Map([
+  ['dockerfile', 'code'],
+  ['makefile', 'code'],
+  ['justfile', 'code'],
+]);
+
+function isLikelyText(buffer) {
+  if (!buffer || buffer.length === 0) return true;
+  if (buffer.includes(0)) return false;
+  try {
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+    let printable = 0;
+    for (const char of text) {
+      const code = char.codePointAt(0);
+      if (code === 9 || code === 10 || code === 13 || (code >= 32 && code !== 127)) printable++;
+    }
+    return printable / Math.max(text.length, 1) >= 0.85;
+  } catch {
+    return false;
+  }
+}
+
+function readSample(abs) {
+  let fd;
+  try {
+    fd = openSync(abs, 'r');
+    const buffer = Buffer.allocUnsafe(4096);
+    const bytes = readSync(fd, buffer, 0, buffer.length, 0);
+    return buffer.subarray(0, bytes);
+  } catch {
+    return null;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
 export function fileKind(name) {
   return KIND_BY_EXT.get(path.extname(name).toLowerCase()) ?? null;
+}
+
+export function fileCategory(name, sample = null) {
+  const ext = path.extname(name).toLowerCase();
+  return CATEGORY_BY_EXT.get(ext) || CATEGORY_BY_NAME.get(name.toLowerCase()) || (isLikelyText(sample) ? 'text' : 'other');
+}
+
+export function filePreview(name, category = fileCategory(name)) {
+  if (category === 'markdown' || category === 'text' || category === 'json' || category === 'code') return 'text';
+  if (category === 'images') return 'image';
+  if (category === 'pdfs') return 'pdf';
+  return 'download';
 }
 
 function escapeRe(ch) {
@@ -168,16 +234,28 @@ function scan(rootDir, includeAll) {
           dirNodes.push({ type: 'dir', name: entry.name, path: rel, count: countFiles(children), children });
         }
       } else if (entry.isFile()) {
+        const abs = path.join(dirAbs, entry.name);
         const kind = fileKind(entry.name);
         if (!includeAll && !kind) continue;
         if (isIgnored(rel, false, stack)) continue;
         let st;
         try {
-          st = statSync(path.join(dirAbs, entry.name));
+          st = statSync(abs);
         } catch {
           continue;
         }
-        fileNodes.push({ type: 'file', name: entry.name, path: rel, kind: kind || 'other', size: st.size, mtime: st.mtimeMs });
+        const sample = includeAll && !kind ? readSample(abs) : null;
+        const category = fileCategory(entry.name, sample);
+        fileNodes.push({
+          type: 'file',
+          name: entry.name,
+          path: rel,
+          kind: kind || 'other',
+          category,
+          preview: filePreview(entry.name, category),
+          size: st.size,
+          mtime: st.mtimeMs,
+        });
       }
     }
 

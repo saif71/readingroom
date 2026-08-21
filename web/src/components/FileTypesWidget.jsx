@@ -1,13 +1,15 @@
 const TYPES = [
-  { id: 'md', label: 'Markdown', color: 'bg-sky-500' },
-  { id: 'txt', label: 'Text', color: 'bg-emerald-500' },
-  { id: 'img', label: 'Images', color: 'bg-amber-500' },
-  { id: 'pdf', label: 'PDF', color: 'bg-rose-500' },
+  { id: 'markdown', label: 'Markdown', color: 'bg-sky-500' },
+  { id: 'images', label: 'Images', color: 'bg-amber-500' },
+  { id: 'pdfs', label: 'PDFs', color: 'bg-rose-500' },
+  { id: 'text', label: 'Text', color: 'bg-emerald-500' },
+  { id: 'json', label: 'JSON', color: 'bg-yellow-500' },
+  { id: 'code', label: 'Code', color: 'bg-cyan-500' },
   { id: 'other', label: 'Other', color: 'bg-violet-500' },
 ];
 
-export default function FileTypesWidget({ byKind }) {
-  const total = TYPES.reduce((sum, type) => sum + (byKind[type.id] || 0), 0);
+export default function FileTypesWidget({ byCategory }) {
+  const total = TYPES.reduce((sum, type) => sum + (byCategory[type.id] || 0), 0);
 
   return (
     <section className="rounded-2xl border border-neutral-200/80 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-950/40" aria-labelledby="dashboard-types-heading">
@@ -23,7 +25,7 @@ export default function FileTypesWidget({ byKind }) {
       ) : (
         <div className="mt-5 space-y-4">
           {TYPES.map((type) => {
-            const count = byKind[type.id] || 0;
+            const count = byCategory[type.id] || 0;
             const percentage = (count / total) * 100;
             return (
               <div key={type.id} aria-label={`${type.label}: ${count} files`}>
