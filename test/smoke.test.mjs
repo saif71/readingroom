@@ -498,6 +498,73 @@ if (!gitAvailable) {
   }
 }
 
+// --- AI agent instructions + skills on the dashboard ------------------------
+
+try {
+  const aiFixture = mkdtempSync(path.join(tmpdir(), 'readingroom-ai-'));
+  writeIn(aiFixture, 'CLAUDE.md', '# Claude rules\n');
+  writeIn(aiFixture, 'AGENTS.md', '# Agent rules\n');
+  writeIn(aiFixture, 'GEMINI.md', '# Gemini rules\n');
+  writeIn(aiFixture, '.cursorrules', 'cursor legacy rules\n');
+  writeIn(aiFixture, '.cursor/rules/testing.mdc', 'cursor modern rule\n');
+  writeIn(aiFixture, '.github/copilot-instructions.md', 'copilot rules\n');
+  writeIn(aiFixture, 'packages/app/AGENTS.md', '# Nested agent rules\n');
+  writeIn(aiFixture, 'docs/random.md', 'just a regular doc\n');
+  writeIn(aiFixture, 'docs/SKILL.md', 'skill-like file outside skills dirs\n');
+  writeIn(aiFixture, '.claude/skills/pdf-report/SKILL.md', '---\nname: pdf-report\ndescription: Generate polished PDF reports\n---\n\n# PDF report skill\n');
+  writeIn(aiFixture, '.agents/skills/expo-tailwind-setup/SKILL.md', '---\nname: expo-tailwind-setup\ndescription: >\n  Set up Tailwind CSS v4 in Expo\n  with NativeWind.\n---\n\n# Expo setup\n');
+  writeIn(aiFixture, '.agents/skills/no-frontmatter/SKILL.md', '# Skill without frontmatter\n');
+  writeIn(aiFixture, '.claude/skills/broken/SKILL.md', 'unreadable is fine too\n');
+
+  const aapp = await startServer({ root: aiFixture, port: 0, distDir: path.resolve('dist'), openFile: async () => true });
+  try {
+    const abase = aapp.url;
+    const dash = await (await fetch(`${abase}/api/dashboard`)).json();
+
+    const instrPaths = dash.agentInstructions.map((file) => file.path);
+    check(
+      '/api/dashboard lists agent instruction files root-first',
+      JSON.stringify(instrPaths) ===
+        JSON.stringify([
+          '.cursorrules',
+          'AGENTS.md',
+          'CLAUDE.md',
+          'GEMINI.md',
+          '.github/copilot-instructions.md',
+          '.cursor/rules/testing.mdc',
+          'packages/app/AGENTS.md',
+        ]) &&
+        dash.agentInstructions.every((file) => file.updatedSource === 'filesystem' && file.updatedAt),
+      JSON.stringify(instrPaths),
+    );
+
+    const bySkillName = Object.fromEntries(dash.skills.map((skill) => [skill.name, skill]));
+    check(
+      '/api/dashboard lists skills with parsed frontmatter descriptions',
+      Object.keys(bySkillName).sort().join(',') === 'broken,expo-tailwind-setup,no-frontmatter,pdf-report' &&
+        bySkillName['pdf-report'].sourceDir === '.claude' &&
+        bySkillName['pdf-report'].description === 'Generate polished PDF reports' &&
+        bySkillName['pdf-report'].path === '.claude/skills/pdf-report/SKILL.md' &&
+        bySkillName['expo-tailwind-setup'].sourceDir === '.agents' &&
+        bySkillName['expo-tailwind-setup'].description === 'Set up Tailwind CSS v4 in Expo with NativeWind.' &&
+        bySkillName['no-frontmatter'].description === null &&
+        bySkillName['broken'].description === null,
+      JSON.stringify(dash.skills),
+    );
+
+    check(
+      'skill-like files outside skills directories are not skills',
+      !dash.skills.some((skill) => skill.path === 'docs/SKILL.md') && !dash.agentInstructions.some((file) => file.path === 'docs/random.md'),
+      JSON.stringify({ skills: dash.skills.map((s) => s.path), instr: instrPaths }),
+    );
+  } finally {
+    await aapp.close();
+  }
+  rmSync(aiFixture, { recursive: true, force: true });
+} catch (err) {
+  check('ai dashboard tests run', false, err.message);
+}
+
 // --- QR encoder ------------------------------------------------------------
 
 try {

@@ -1,8 +1,10 @@
 import { useMemo } from "react";
+import AgentInstructionsWidget from "./AgentInstructionsWidget";
 import FileTypesWidget from "./FileTypesWidget";
 import OverviewWidget from "./OverviewWidget";
 import RankedFilesWidget from "./RankedFilesWidget";
 import QRWidget from "./QRWidget";
+import SkillsWidget from "./SkillsWidget";
 import folderIcon from "../icons/folder.svg";
 
 const CATEGORIES = [
@@ -14,6 +16,29 @@ const CATEGORIES = [
   "code",
   "other",
 ];
+
+// Mirrors the detection in src/dashboard.js so the fallback (used when
+// /api/dashboard is unreachable) still surfaces these widgets.
+const AGENT_INSTRUCTION_NAMES = new Set([
+  "CLAUDE.md",
+  "AGENTS.md",
+  "GEMINI.md",
+  "QWEN.md",
+  "copilot-instructions.md",
+  ".cursorrules",
+  ".windsurfrules",
+  ".clinerules",
+]);
+const AGENT_INSTRUCTION_PATH_RES = [
+  /^\.cursor\/rules\/[^/]+\.(md|mdc)$/,
+  /^\.github\/instructions\/[^/]+\.instructions\.md$/,
+];
+const SKILL_FILE_RE = /^\.(claude|agents|cursor)\/skills\/([^/]+)\/SKILL\.md$/;
+
+function isAgentInstructionFile(filePath) {
+  if (AGENT_INSTRUCTION_NAMES.has(filePath.split("/").pop())) return true;
+  return AGENT_INSTRUCTION_PATH_RES.some((re) => re.test(filePath));
+}
 
 function fallbackDashboard(tree) {
   const files = [];
@@ -49,6 +74,28 @@ function fallbackDashboard(tree) {
     };
   });
 
+  const depth = (file) => (file.path.match(/\//g) || []).length;
+  const agentInstructions = rows
+    .filter((file) => isAgentInstructionFile(file.path))
+    .sort((a, b) => depth(a) - depth(b) || a.path.localeCompare(b.path));
+  const skills = rows
+    .flatMap((file) => {
+      const match = SKILL_FILE_RE.exec(file.path);
+      return match
+        ? [
+            {
+              name: match[2],
+              sourceDir: `.${match[1]}`,
+              description: null,
+              path: file.path,
+              size: file.size,
+              updatedAt: file.updatedAt,
+            },
+          ]
+        : [];
+    })
+    .sort((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path));
+
   return {
     fileCount: files.length,
     directoryCount,
@@ -69,6 +116,8 @@ function fallbackDashboard(tree) {
           a.path.localeCompare(b.path),
       )
       .slice(0, 10),
+    agentInstructions,
+    skills,
   };
 }
 
@@ -125,6 +174,10 @@ export default function Dashboard({ tree, data, error, loading, onOpen }) {
           />
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             <div className="grid-1 space-y-4">
+              <AgentInstructionsWidget
+                files={model.agentInstructions || []}
+                onOpen={onOpen}
+              />
               <FileTypesWidget byCategory={model.byCategory} />
               <RankedFilesWidget
                 title="Oldest updated"
@@ -135,6 +188,7 @@ export default function Dashboard({ tree, data, error, loading, onOpen }) {
               />
             </div>
             <div className="grid-2 space-y-4">
+              <SkillsWidget skills={model.skills || []} onOpen={onOpen} />
               <QRWidget />
               <RankedFilesWidget
                 title="Recently updated"
