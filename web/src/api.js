@@ -1,14 +1,22 @@
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.avif', '.svg']);
 const PDF_EXTS = new Set(['.pdf']);
+const TEXT_EXTS = new Set(['.md', '.markdown', '.txt']);
+
+function extensionOf(p) {
+  const dot = p.lastIndexOf('.');
+  return dot === -1 ? '' : p.slice(dot).toLowerCase();
+}
 
 export function isImagePath(p) {
-  const dot = p.lastIndexOf('.');
-  return dot !== -1 && IMAGE_EXTS.has(p.slice(dot).toLowerCase());
+  return IMAGE_EXTS.has(extensionOf(p));
 }
 
 export function isPdfPath(p) {
-  const dot = p.lastIndexOf('.');
-  return dot !== -1 && PDF_EXTS.has(p.slice(dot).toLowerCase());
+  return PDF_EXTS.has(extensionOf(p));
+}
+
+export function isTextPath(p) {
+  return TEXT_EXTS.has(extensionOf(p));
 }
 
 export async function openInSystemApp(path) {
@@ -22,6 +30,13 @@ export async function fetchTree() {
   const res = await fetch('/api/tree');
   if (!res.ok) throw new Error('failed to load file tree');
   return res.json();
+}
+
+export async function fetchDashboard() {
+  const res = await fetch('/api/dashboard');
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || 'failed to load dashboard');
+  return body;
 }
 
 export async function fetchFile(path) {

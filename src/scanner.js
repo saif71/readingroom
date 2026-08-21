@@ -125,11 +125,11 @@ function countFiles(nodes) {
 }
 
 /**
- * Scan a directory tree and return only the documentation files:
- * { type, name, path, count?, size?, mtime?, children? }
- * `path` is a repo-relative POSIX path ('' for the root).
+ * Scan a directory tree. By default this returns only the documentation files
+ * readingroom can preview; includeAll also keeps every non-ignored file for
+ * inventory-style views such as the home dashboard.
  */
-export function scanTree(rootDir) {
+function scan(rootDir, includeAll) {
   const rootAbs = path.resolve(rootDir);
   const rootName = path.basename(rootAbs) || rootAbs;
   const stack = [];
@@ -169,7 +169,7 @@ export function scanTree(rootDir) {
         }
       } else if (entry.isFile()) {
         const kind = fileKind(entry.name);
-        if (!kind) continue;
+        if (!includeAll && !kind) continue;
         if (isIgnored(rel, false, stack)) continue;
         let st;
         try {
@@ -177,7 +177,7 @@ export function scanTree(rootDir) {
         } catch {
           continue;
         }
-        fileNodes.push({ type: 'file', name: entry.name, path: rel, kind, size: st.size, mtime: st.mtimeMs });
+        fileNodes.push({ type: 'file', name: entry.name, path: rel, kind: kind || 'other', size: st.size, mtime: st.mtimeMs });
       }
     }
 
@@ -192,4 +192,12 @@ export function scanTree(rootDir) {
 
   const children = walk(rootAbs, '', 0);
   return { type: 'dir', name: rootName, path: '', count: countFiles(children), children };
+}
+
+export function scanTree(rootDir) {
+  return scan(rootDir, false);
+}
+
+export function scanAllTree(rootDir) {
+  return scan(rootDir, true);
 }

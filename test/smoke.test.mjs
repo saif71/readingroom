@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import { startServer } from '../src/server.js';
+import { scanAllTree } from '../src/scanner.js';
 import { qrEncode, rsSyndromes, MAX_INPUT_BYTES } from '../web/src/vendor/qr.js';
 import { parseTunnelUrl, untarSingleFile } from '../src/tunnel.js';
 
@@ -57,6 +58,7 @@ write('img.png', Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
 write('photo.JPG', Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]));
 write('logo.svg', '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"></svg>');
 write('pic.webp', Buffer.from([0x52, 0x49, 0x46, 0x46, 0x24, 0x00, 0x00, 0x00]));
+write('script.js', 'console.log("hello");\n');
 mkdirSync(path.join(fixture, 'empty'));
 symlinkSync(path.join(fixture, 'README.md'), path.join(fixture, 'link.md'));
 
@@ -109,6 +111,37 @@ try {
         kindByPath['logo.svg'] === 'img' &&
         kindByPath['doc.pdf'] === 'pdf',
       `count=${tree.count}`
+    );
+
+    // 2b. Dashboard aggregates the full non-ignored inventory and degrades outside Git.
+    const dashboardRes = await fetch(`${base}/api/dashboard`);
+    const dashboard = await dashboardRes.json();
+    const inventory = scanAllTree(fixture);
+    const inventoryFiles = flattenTree(inventory);
+    const inventorySize = inventoryFiles.reduce((sum, node) => sum + node.size, 0);
+    const surfacedSize = flattenTree(tree).reduce((sum, node) => sum + node.size, 0);
+    check(
+      '/api/dashboard returns all non-ignored counts and size',
+      dashboardRes.ok &&
+        dashboard.fileCount === inventoryFiles.length &&
+        dashboard.directoryCount === 4 &&
+        dashboard.totalBytes === inventorySize &&
+        dashboard.byKind.md === 7 &&
+        dashboard.byKind.txt === 1 &&
+        dashboard.byKind.img === 4 &&
+        dashboard.byKind.pdf === 1 &&
+        dashboard.byKind.other === 3 &&
+        dashboard.totalBytes > surfacedSize,
+      JSON.stringify(dashboard)
+    );
+    check(
+      '/api/dashboard uses filesystem dates outside Git and caps rankings',
+      dashboard.gitAvailable === false &&
+        dashboard.recent.length === 10 &&
+        dashboard.oldest.length === 10 &&
+        dashboard.recent.every((file) => file.updatedSource === 'filesystem') &&
+        dashboard.oldest.every((file) => file.updatedSource === 'filesystem'),
+      JSON.stringify({ recent: dashboard.recent.length, oldest: dashboard.oldest.length })
     );
 
     // 3. File content.
@@ -230,6 +263,12 @@ try {
     appendFileSync(path.join(fixture, 'docs', 'new.md'), '# Fresh\n');
     const nextTree = await Promise.race([gotTree, new Promise((r) => setTimeout(() => r('timeout'), 8000))]);
     check('SSE pushes updated tree on file add', nextTree !== 'timeout' && nextTree !== null && flattenTree(nextTree).some((node) => node.path === 'docs/new.md'), String(nextTree).slice(0, 80));
+    const refreshedDashboard = await (await fetch(`${base}/api/dashboard`)).json();
+    check(
+      'dashboard cache refreshes with the live tree',
+      refreshedDashboard.fileCount === inventoryFiles.length + 1 && refreshedDashboard.recent.some((file) => file.path === 'docs/new.md'),
+      JSON.stringify(refreshedDashboard.recent)
+    );
     await reader.cancel();
 
     // 13. Non-git folder: inspector endpoints degrade gracefully.
@@ -317,6 +356,23 @@ if (!gitAvailable) {
       const grepo = await grepoRes.json();
       check('/api/repo detects the repository and branch', grepoRes.ok && grepo.git === true && typeof grepo.branch === 'string' && grepo.branch.length > 0, JSON.stringify(grepo));
 
+      const guideCommitDate = git(['log', '-n', '1', '--format=%aI', '--', 'guide.md']).trim();
+      const gdash = await (await fetch(`${gbase}/api/dashboard`)).json();
+      const guideRecent = gdash.recent.find((file) => file.path === 'guide.md');
+      const untrackedRecent = gdash.recent.find((file) => file.path === 'untracked.md');
+      check(
+        '/api/dashboard uses Git dates for tracked files and filesystem fallback for untracked files',
+        gdash.gitAvailable === true &&
+          gdash.fileCount === 4 &&
+          gdash.directoryCount === 2 &&
+          gdash.byKind.md === 3 &&
+          gdash.byKind.img === 1 &&
+          guideRecent?.updatedSource === 'git' &&
+          guideRecent.updatedAt === guideCommitDate &&
+          untrackedRecent?.updatedSource === 'filesystem',
+        JSON.stringify({ guideRecent, untrackedRecent, gdash })
+      );
+
       const ghistRes = await fetch(`${gbase}/api/history?p=${encodeURIComponent('guide.md')}`);
       const ghist = await ghistRes.json();
       const subjects = ghist.commits.map((c) => c.subject);
@@ -395,6 +451,12 @@ if (!gitAvailable) {
       );
       const smeta = await (await fetch(`${sbase}/api/meta?p=sub.md`)).json();
       check('repo subdirectory: meta finds last commit', smeta.lastCommit && smeta.lastCommit.subject === 'add sub');
+      const sdash = await (await fetch(`${sbase}/api/dashboard`)).json();
+      check(
+        'repo subdirectory: dashboard maps Git paths correctly',
+        sdash.fileCount === 1 && sdash.directoryCount === 0 && sdash.recent[0]?.path === 'sub.md' && sdash.recent[0]?.updatedSource === 'git',
+        JSON.stringify(sdash)
+      );
     } finally {
       await subApp.close();
     }

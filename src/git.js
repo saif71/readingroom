@@ -17,6 +17,8 @@ const HISTORY_LIMIT = 500;
 const FIELD = '\x1f';
 const RECORD = '\x1e';
 const PRETTY = `%H${FIELD}%h${FIELD}%an${FIELD}%ae${FIELD}%aI${FIELD}%s${RECORD}`;
+const DASHBOARD_PRETTY = `%aI${RECORD}`;
+const DASHBOARD_PATH_BATCH = 250;
 
 export class VersionNotFound extends Error {
   constructor() {
@@ -81,6 +83,21 @@ function unquotePath(p) {
     }
   }
   return p;
+}
+
+function parseLatestDates(out, wanted) {
+  const dates = new Map();
+  let date = null;
+  for (const line of String(out).split(/\r?\n/)) {
+    if (line.includes(RECORD)) {
+      date = line.slice(0, line.indexOf(RECORD)).trim() || null;
+      continue;
+    }
+    if (!date || !line.trim()) continue;
+    const rel = unquotePath(line.trim()).replace(/\\/g, '/');
+    if (wanted.has(rel) && !dates.has(rel)) dates.set(rel, date);
+  }
+  return dates;
 }
 
 function parseCommits(out) {
@@ -160,6 +177,39 @@ export async function lastCommitFor(rootAbs, rel) {
   } catch {
     return null; // untracked, unborn repo, or a git hiccup — info degrades quietly
   }
+}
+
+/**
+ * Latest author date for each requested served-root path in one repository-wide
+ * history query per bounded batch. Returns null outside Git or when Git cannot
+ * answer; an empty map is a valid Git repository with no matching history.
+ */
+export async function latestCommitDates(rootAbs, rels) {
+  const repo = await findRepo(rootAbs);
+  if (!repo) return null;
+  const requested = [...new Set(rels.map((rel) => repoRelative(repo, rel)))];
+  if (requested.length === 0) return new Map();
+
+  const dates = new Map();
+  try {
+    for (let i = 0; i < requested.length; i += DASHBOARD_PATH_BATCH) {
+      const batch = requested.slice(i, i + DASHBOARD_PATH_BATCH);
+      const out = await runGit(repo.repoRoot, [
+        'log', '--name-only', `--format=${DASHBOARD_PRETTY}`, '--', ...batch,
+      ]);
+      const batchDates = parseLatestDates(out, new Set(batch));
+      for (const [repoRel, date] of batchDates) {
+        const servedRel = repo.subDir && repoRel.startsWith(`${repo.subDir}/`)
+          ? repoRel.slice(repo.subDir.length + 1)
+          : repoRel;
+        dates.set(servedRel, date);
+      }
+    }
+  } catch (err) {
+    if (isUnborn(err)) return new Map();
+    return null;
+  }
+  return dates;
 }
 
 /** Commit timeline for rel: { repo, commits, truncated } | null when not a repo. */

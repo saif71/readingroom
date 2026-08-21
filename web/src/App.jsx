@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { fetchTree, subscribeTree, viewUrl, versionUrl, pathFromViewUrl } from "./api";
+import { fetchDashboard, fetchTree, subscribeTree, viewUrl, versionUrl, pathFromViewUrl } from "./api";
 import Sidebar from "./components/Sidebar";
 import Viewer from "./components/Viewer";
 import Inspector from "./components/Inspector";
 import QrModal from "./components/QrModal";
-import { EmptyState, Welcome } from "./components/EmptyState";
+import Dashboard from "./components/Dashboard";
+import { EmptyState } from "./components/EmptyState";
 import useMediaQuery from "./useMediaQuery";
 
 const REF_RE = /^[0-9a-f]{7,40}$/i;
@@ -40,6 +41,9 @@ export default function App() {
   const [refSha, setRefSha] = useState(refFromLocation);
   const [refreshKey, setRefreshKey] = useState(0);
   const [qrOpen, setQrOpen] = useState(false);
+  const [dashboard, setDashboard] = useState(null);
+  const [dashboardError, setDashboardError] = useState(null);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
 
   const isMobile = useMediaQuery(MOBILE_QUERY);
   const [sidebarOpen, setSidebarOpen] = useState(
@@ -80,6 +84,36 @@ export default function App() {
       unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (!tree || tree.count === 0) {
+      setDashboard(null);
+      setDashboardError(null);
+      setDashboardLoading(false);
+      return undefined;
+    }
+    let alive = true;
+    setDashboard(null);
+    setDashboardError(null);
+    setDashboardLoading(true);
+    fetchDashboard()
+      .then((data) => {
+        if (!alive) return;
+        setDashboard(data);
+        setDashboardError(null);
+      })
+      .catch((e) => {
+        if (!alive) return;
+        setDashboard(null);
+        setDashboardError(e.message);
+      })
+      .finally(() => {
+        if (alive) setDashboardLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [tree]);
 
   useEffect(() => {
     const onPop = () => {
@@ -181,7 +215,11 @@ export default function App() {
           onOpenQr={() => setQrOpen(true)}
         />
         <main className="min-w-0 flex-1 overflow-y-auto bg-zinc-50 dark:bg-zinc-900 m-2 rounded-3xl sm:m-4">
-          {tree && tree.count === 0 ? (
+          {!tree ? (
+            <div className="flex h-full items-center justify-center p-8 text-sm text-neutral-400">
+              Scanning project files…
+            </div>
+          ) : tree.count === 0 ? (
             <EmptyState rootName={tree.name} />
           ) : current ? (
             <Viewer
@@ -191,7 +229,13 @@ export default function App() {
               onNavigate={navigate}
             />
           ) : (
-            <Welcome />
+            <Dashboard
+              tree={tree}
+              data={dashboard}
+              error={dashboardError}
+              loading={dashboardLoading}
+              onOpen={navigate}
+            />
           )}
         </main>
         {current && (

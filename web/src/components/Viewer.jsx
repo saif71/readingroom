@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { fetchFile, fetchVersion, isImagePath, isPdfPath, rawUrl, versionRawUrl, downloadUrl, versionDownloadUrl } from '../api';
+import { fetchFile, fetchVersion, isImagePath, isPdfPath, isTextPath, rawUrl, versionRawUrl, downloadUrl, versionDownloadUrl } from '../api';
 import { formatDate } from '../format';
 import MarkdownView from './MarkdownView';
 import TextView from './TextView';
@@ -112,12 +112,13 @@ export default function Viewer({ path, refSha, refreshKey, onNavigate }) {
   const [state, setState] = useState({ status: 'loading' });
   const isImage = isImagePath(path);
   const isPdf = isPdfPath(path);
+  const isUnsupported = !isImage && !isPdf && !isTextPath(path);
   const isVersion = refSha != null;
 
   useEffect(() => {
     // Binary kinds render straight from a URL — but a historical version
     // still fetches the JSON form so the banner has author/date/subject.
-    if ((isImage || isPdf) && !isVersion) return;
+    if ((isImage || isPdf || isUnsupported) && !isVersion) return;
     setState({ status: 'loading' });
     let alive = true;
     const load = isVersion ? fetchVersion(path, refSha) : fetchFile(path);
@@ -127,7 +128,7 @@ export default function Viewer({ path, refSha, refreshKey, onNavigate }) {
     return () => {
       alive = false;
     };
-  }, [path, refreshKey, isImage, isPdf, isVersion, refSha]);
+  }, [path, refreshKey, isImage, isPdf, isUnsupported, isVersion, refSha]);
 
   const sourceUrl = isVersion ? versionRawUrl(path, refSha) : rawUrl(path);
   const dlUrl = isVersion ? versionDownloadUrl(path, refSha) : downloadUrl(path);
@@ -157,6 +158,34 @@ export default function Viewer({ path, refSha, refreshKey, onNavigate }) {
         ) : (
           <PdfView path={path} src={sourceUrl} isVersion={isVersion} reloadKey={isVersion ? 0 : refreshKey} />
         )}
+      </div>
+    );
+  }
+
+  if (isUnsupported) {
+    if (isVersion && state.status === 'loading') {
+      return (
+        <Centered>
+          <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-neutral-300 border-t-sky-500" />
+        </Centered>
+      );
+    }
+    if (isVersion && state.status === 'error') {
+      return (
+        <Centered>
+          <p className="font-medium text-neutral-500 dark:text-neutral-300">{path}</p>
+          <p className="mt-1">{state.message}</p>
+        </Centered>
+      );
+    }
+    return (
+      <div className="mx-auto max-w-3xl px-6 py-8 sm:px-10">
+        {isVersion && <VersionBanner version={state.file} onBack={() => onNavigate(path)} />}
+        <Header name={path.split('/').pop()} path={path} downloadUrl={dlUrl} />
+        <Centered>
+          <p className="font-medium text-neutral-500 dark:text-neutral-300">This file type cannot be previewed.</p>
+          <p className="mt-1">Download the file to open it in the appropriate application.</p>
+        </Centered>
       </div>
     );
   }

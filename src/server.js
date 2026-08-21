@@ -3,9 +3,10 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { createReadStream, existsSync, readFileSync, statSync, watch } from 'node:fs';
 import { networkInterfaces } from 'node:os';
 import path from 'node:path';
-import { scanTree, fileKind, DEFAULT_IGNORED_DIRS } from './scanner.js';
+import { scanTree, scanAllTree, fileKind, DEFAULT_IGNORED_DIRS } from './scanner.js';
 import { openExternal } from './openBrowser.js';
 import { repoStatus, lastCommitFor, fileHistory, fileVersion, VersionNotFound } from './git.js';
+import { buildDashboard } from './dashboard.js';
 import { startQuickTunnel } from './tunnel.js';
 
 const MIME = {
@@ -178,7 +179,10 @@ export async function startServer({
     return false;
   };
   let cachedTree = scanTree(rootAbs);
+  let cachedInventory = scanAllTree(rootAbs);
   let lastTreeJson = JSON.stringify(cachedTree);
+  let lastInventoryJson = JSON.stringify(cachedInventory);
+  let dashboardCache = { inventoryJson: null, promise: null };
   const sseClients = new Set();
 
   // Only serve files that resolve inside the scanned root.
@@ -194,16 +198,40 @@ export async function startServer({
     for (const res of sseClients) res.write(payload);
   }
 
+  function dashboardData() {
+    if (dashboardCache.inventoryJson === lastInventoryJson && dashboardCache.promise) {
+      return dashboardCache.promise;
+    }
+    dashboardCache = {
+      inventoryJson: lastInventoryJson,
+      promise: buildDashboard(cachedInventory, rootAbs),
+    };
+    return dashboardCache.promise;
+  }
+
   let rescanTimer = null;
   function scheduleRescan() {
     clearTimeout(rescanTimer);
     rescanTimer = setTimeout(() => {
       try {
         const next = scanTree(rootAbs);
-        const json = JSON.stringify(next);
-        if (json !== lastTreeJson) {
-          cachedTree = next;
-          lastTreeJson = json;
+        const nextInventory = scanAllTree(rootAbs);
+        const treeJson = JSON.stringify(next);
+        const inventoryJson = JSON.stringify(nextInventory);
+        const treeChanged = treeJson !== lastTreeJson;
+        const inventoryChanged = inventoryJson !== lastInventoryJson;
+        if (treeChanged || inventoryChanged) {
+          if (treeChanged) {
+            cachedTree = next;
+            lastTreeJson = treeJson;
+          }
+          if (inventoryChanged) {
+            cachedInventory = nextInventory;
+            lastInventoryJson = inventoryJson;
+          }
+          dashboardCache = { inventoryJson: null, promise: null };
+          // An inventory-only change still needs to wake the dashboard, while
+          // keeping the sidebar tree payload stable for its subscribers.
           broadcastTree();
         }
       } catch {
@@ -270,6 +298,11 @@ export async function startServer({
 
       if (pathname === '/api/tree') {
         sendJson(res, 200, cachedTree);
+        return;
+      }
+
+      if (pathname === '/api/dashboard') {
+        sendJson(res, 200, await dashboardData());
         return;
       }
 
