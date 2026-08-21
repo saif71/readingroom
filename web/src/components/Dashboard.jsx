@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import AICommitsWidget from "./AICommitsWidget";
 import AgentInstructionsWidget from "./AgentInstructionsWidget";
 import CommandsWidget from "./CommandsWidget";
 import FileTypesWidget from "./FileTypesWidget";
@@ -129,6 +130,7 @@ function fallbackDashboard(tree) {
     totalBytes,
     byCategory,
     gitAvailable: false,
+    aiCommits: null,
     recent: [...rows]
       .sort(
         (a, b) =>
@@ -206,6 +208,7 @@ export default function Dashboard({ tree, data, error, loading, onOpen }) {
                 files={model.agentInstructions || []}
                 onOpen={onOpen}
               />
+              <AICommitsWidget aiCommits={model.aiCommits || null} />
               <FileTypesWidget byCategory={model.byCategory} />
               <RankedFilesWidget
                 title="Oldest updated"

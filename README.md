@@ -14,6 +14,7 @@ Codebases are drowning in documentation: READMEs, design docs, agent instruction
 
 - **Sidebar tree** of every `.md`, `.txt`, image, and PDF file, with document counts per folder.
 - **Agent instructions, skills & custom commands dashboard** - AI agent instruction files (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `.cursorrules`, Copilot instructions, and friends), skills from `.claude/skills`, `.agents/skills`, and `.cursor/skills`, and custom slash commands from `.claude/commands`, `.cursor/commands`, `.agents/commands`, and `.github/prompts` are grouped into dashboard cards - click one to read it in the viewer
+- **AI-authored commit share** - in a Git repository, the dashboard shows what fraction of recent commits carry an AI trailer (`Co-Authored-By: Claude`, "Generated with Claude Code", Copilot, Cursor, Gemini, Codex), which files those commits touch most, and when an agent last committed
 - **File-type filter** - chips under the search box narrow the list to Markdown, text, images, or PDF (only types your project actually has appear), each with a live count.
 - **Rendered markdown** - GitHub-flavored (tables, task lists), syntax-highlighted code blocks, collapsed YAML frontmatter; `.txt` files shown as plain text
 - **Images** - `png`, `jpg`, `jpeg`, `webp`, `gif`, `avif`, and `svg` render right in the viewer

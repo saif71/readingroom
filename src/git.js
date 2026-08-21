@@ -19,6 +19,21 @@ const RECORD = '\x1e';
 const PRETTY = `%H${FIELD}%h${FIELD}%an${FIELD}%ae${FIELD}%aI${FIELD}%s${RECORD}`;
 const DASHBOARD_PRETTY = `%aI${RECORD}`;
 const DASHBOARD_PATH_BATCH = 250;
+const AI_COMMIT_LIMIT = 500;
+const AI_TOP_FILES = 6;
+const AI_BODY_PRETTY = `%H${FIELD}%aI${FIELD}%b${RECORD}`;
+
+// AI assistants leave machine-readable traces in commit messages: co-author
+// trailers ("Co-Authored-By: Claude <noreply@anthropic.com>") and footer lines
+// ("🤖 Generated with [Claude Code](https://claude.com/claude-code)"). Bodies
+// are matched, not subjects, so a commit merely *about* Claude doesn't count.
+const AI_TOOLS = [
+  { id: 'claude', label: 'Claude', match: [/co-authored-by:[^\n<]*claude/i, /generated with \[?claude code\]?/i] },
+  { id: 'copilot', label: 'Copilot', match: [/co-authored-by:[^\n<]*copilot/i, /generated with \[?(github )?copilot\]?/i] },
+  { id: 'cursor', label: 'Cursor', match: [/co-authored-by:[^\n<]*cursor/i, /generated with \[?cursor( agent)?\]?/i] },
+  { id: 'gemini', label: 'Gemini', match: [/co-authored-by:[^\n<]*gemini/i, /generated with \[?gemini( cli)?\]?/i] },
+  { id: 'codex', label: 'Codex', match: [/co-authored-by:[^\n<]*codex/i, /generated with \[?codex\]?/i] },
+];
 
 export class VersionNotFound extends Error {
   constructor() {
@@ -210,6 +225,102 @@ export async function latestCommitDates(rootAbs, rels) {
     return null;
   }
   return dates;
+}
+
+/** Parse `AI_BODY_PRETTY` output into { sha, date, body } records. */
+function parseAiBodies(out) {
+  const commits = [];
+  for (const chunk of String(out).split(RECORD)) {
+    // Records after the first start with the newline git appends to each entry.
+    const fields = chunk.trim().split(FIELD);
+    if (!/^[0-9a-f]{40}$/i.test(fields[0])) continue;
+    commits.push({ sha: fields[0], date: fields[1] || '', body: fields.slice(2).join(FIELD) });
+  }
+  return commits;
+}
+
+/** Group `git show --name-only` output by commit sha. */
+function parseAiCommitFiles(out) {
+  const filesBySha = new Map();
+  let sha = null;
+  for (const line of String(out).split(/\r?\n/)) {
+    if (line.includes(RECORD)) {
+      sha = line.slice(0, line.indexOf(RECORD)).trim() || null;
+      if (sha) filesBySha.set(sha, []);
+      continue;
+    }
+    if (!sha || !line.trim()) continue;
+    filesBySha.get(sha).push(unquotePath(line.trim()).replace(/\\/g, '/'));
+  }
+  return filesBySha;
+}
+
+/**
+ * Share of recent commits authored with an AI assistant, judged by co-author
+ * and "generated with" trailers in the message body. Scoped to the served
+ * root (repo-wide when the root is the repository itself). Returns
+ * { scanned, aiCount, share, byTool, topFiles, latestAiAt }, zeroed stats for
+ * a repository with no commits, or null outside Git / when Git fails.
+ */
+export async function aiCommitShare(rootAbs) {
+  const repo = await findRepo(rootAbs);
+  if (!repo) return null;
+  let out;
+  try {
+    const scope = repo.subDir ? ['--', repo.subDir] : [];
+    out = await runGit(repo.repoRoot, ['log', '-n', String(AI_COMMIT_LIMIT), `--format=${AI_BODY_PRETTY}`, ...scope]);
+  } catch (err) {
+    if (isUnborn(err)) return { scanned: 0, aiCount: 0, share: 0, byTool: [], topFiles: [], latestAiAt: null };
+    return null;
+  }
+
+  const commits = parseAiBodies(out);
+  const toolCounts = new Map();
+  const aiShas = [];
+  let latestAiAt = null;
+  for (const commit of commits) {
+    const hits = AI_TOOLS.filter((tool) => tool.match.some((re) => re.test(commit.body)));
+    if (hits.length === 0) continue;
+    aiShas.push(commit.sha);
+    if (!latestAiAt) latestAiAt = commit.date || null; // log walks newest-first
+    for (const tool of hits) toolCounts.set(tool.id, (toolCounts.get(tool.id) || 0) + 1);
+  }
+  const byTool = AI_TOOLS
+    .filter((tool) => toolCounts.has(tool.id))
+    .map((tool) => ({ id: tool.id, label: tool.label, count: toolCounts.get(tool.id) }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+
+  let topFiles = [];
+  if (aiShas.length > 0) {
+    try {
+      const filesBySha = parseAiCommitFiles(
+        await runGit(repo.repoRoot, ['show', '--name-only', `--format=%H${RECORD}`, ...aiShas]),
+      );
+      const counts = new Map();
+      for (const files of filesBySha.values()) {
+        for (const repoRel of files) {
+          let servedRel = repoRel;
+          if (repo.subDir) servedRel = repoRel.startsWith(`${repo.subDir}/`) ? repoRel.slice(repo.subDir.length + 1) : null;
+          if (servedRel) counts.set(servedRel, (counts.get(servedRel) || 0) + 1);
+        }
+      }
+      topFiles = [...counts]
+        .map(([p, count]) => ({ path: p, count }))
+        .sort((a, b) => b.count - a.count || a.path.localeCompare(b.path))
+        .slice(0, AI_TOP_FILES);
+    } catch {
+      /* the file ranking is best-effort; the headline share still stands */
+    }
+  }
+
+  return {
+    scanned: commits.length,
+    aiCount: aiShas.length,
+    share: commits.length > 0 ? aiShas.length / commits.length : 0,
+    byTool,
+    topFiles,
+    latestAiAt,
+  };
 }
 
 /** Commit timeline for rel: { repo, commits, truncated } | null when not a repo. */

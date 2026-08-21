@@ -160,6 +160,7 @@ try {
     check(
       '/api/dashboard uses filesystem dates outside Git and caps rankings',
       dashboard.gitAvailable === false &&
+        dashboard.aiCommits === null &&
         dashboard.recent.length === 10 &&
         dashboard.oldest.length === 10 &&
         dashboard.recent.every((file) => file.updatedSource === 'filesystem') &&
@@ -341,11 +342,12 @@ if (!gitAvailable) {
     git(['init']);
     git(['config', 'user.name', 'Alice Author']);
     git(['config', 'user.email', 'alice@example.com']);
-    const commit = (message, author) => {
+    const commit = (message, author, body) => {
       const authorArgs = author
         ? ['-c', `user.name=${author}`, '-c', `user.email=${author.toLowerCase().replace(/\s+/g, '.')}@example.com`]
         : [];
-      git([...authorArgs, '-c', 'commit.gpgsign=false', 'commit', '-m', message]);
+      const bodyArgs = body ? ['-m', body] : [];
+      git([...authorArgs, '-c', 'commit.gpgsign=false', 'commit', '-m', message, ...bodyArgs]);
     };
 
     writeIn(gitFixture, 'doc.md', 'original content\n');
@@ -372,6 +374,25 @@ if (!gitAvailable) {
     git(['add', 'packages/docs/sub.md']);
     commit('add sub');
 
+    // AI-trailer commits for the dashboard share widget, plus a subject-only
+    // mention that must NOT count (only bodies are scanned).
+    writeIn(gitFixture, 'ai-notes.md', 'musings about claude\n');
+    git(['add', 'ai-notes.md']);
+    commit('thoughts on claude');
+    writeIn(gitFixture, 'ai-foo.md', 'foo v1\n');
+    git(['add', 'ai-foo.md']);
+    commit('add ai-foo', null, 'Co-Authored-By: Claude <noreply@anthropic.com>');
+    writeIn(gitFixture, 'ai-foo.md', 'foo v2\n');
+    writeIn(gitFixture, 'ai-bar.md', 'bar v1\n');
+    git(['add', 'ai-foo.md', 'ai-bar.md']);
+    commit('agent batch', null, '🤖 Generated with [Claude Code](https://claude.com/claude-code)');
+    writeIn(gitFixture, 'ai-bar.md', 'bar v2\n');
+    git(['add', 'ai-bar.md']);
+    commit('copilot edit', null, 'Co-authored-by: Copilot <175728472+Copilot@users.noreply.github.com>');
+    writeIn(gitFixture, 'ai-bar.md', 'bar v3\n');
+    git(['add', 'ai-bar.md']);
+    commit('cursor edit', null, 'Co-Authored-By: Cursor Agent <cursor@cursor.com>');
+
     const shaBySubject = Object.fromEntries(
       git(['log', '--all', '--format=%H %s'])
         .trim()
@@ -394,14 +415,38 @@ if (!gitAvailable) {
       check(
         '/api/dashboard uses Git dates for tracked files and filesystem fallback for untracked files',
         gdash.gitAvailable === true &&
-          gdash.fileCount === 4 &&
+          gdash.fileCount === 7 &&
           gdash.directoryCount === 2 &&
-          gdash.byCategory.markdown === 3 &&
+          gdash.byCategory.markdown === 6 &&
           gdash.byCategory.images === 1 &&
           guideRecent?.updatedSource === 'git' &&
           guideRecent.updatedAt === guideCommitDate &&
           untrackedRecent?.updatedSource === 'filesystem',
         JSON.stringify({ guideRecent, untrackedRecent, gdash })
+      );
+      check(
+        '/api/dashboard reports the AI-authored commit share',
+        gdash.aiCommits &&
+          gdash.aiCommits.scanned === 13 &&
+          gdash.aiCommits.aiCount === 4 &&
+          Math.abs(gdash.aiCommits.share - 4 / 13) < 1e-9 &&
+          typeof gdash.aiCommits.latestAiAt === 'string',
+        JSON.stringify(gdash.aiCommits)
+      );
+      check(
+        'AI commit share breaks down by tool and ranks touched files',
+        JSON.stringify(gdash.aiCommits.byTool) ===
+          JSON.stringify([
+            { id: 'claude', label: 'Claude', count: 2 },
+            { id: 'copilot', label: 'Copilot', count: 1 },
+            { id: 'cursor', label: 'Cursor', count: 1 },
+          ]) &&
+          JSON.stringify(gdash.aiCommits.topFiles) ===
+            JSON.stringify([
+              { path: 'ai-bar.md', count: 3 },
+              { path: 'ai-foo.md', count: 2 },
+            ]),
+        JSON.stringify({ byTool: gdash.aiCommits?.byTool, topFiles: gdash.aiCommits?.topFiles })
       );
 
       const ghistRes = await fetch(`${gbase}/api/history?p=${encodeURIComponent('guide.md')}`);
@@ -487,6 +532,11 @@ if (!gitAvailable) {
         'repo subdirectory: dashboard maps Git paths correctly',
         sdash.fileCount === 1 && sdash.directoryCount === 0 && sdash.recent[0]?.path === 'sub.md' && sdash.recent[0]?.updatedSource === 'git',
         JSON.stringify(sdash)
+      );
+      check(
+        'repo subdirectory: AI commit share is scoped to the subdirectory',
+        sdash.aiCommits?.scanned === 1 && sdash.aiCommits?.aiCount === 0,
+        JSON.stringify(sdash.aiCommits)
       );
     } finally {
       await subApp.close();

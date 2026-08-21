@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { latestCommitDates } from './git.js';
+import { aiCommitShare, latestCommitDates } from './git.js';
 
 const CATEGORIES = ['markdown', 'images', 'pdfs', 'text', 'json', 'code', 'other'];
 const RANK_LIMIT = 10;
@@ -135,6 +135,13 @@ export async function buildDashboard(tree, rootAbs) {
     /* Dashboard ranking always has a filesystem fallback. */
   }
 
+  let aiCommits = null;
+  try {
+    aiCommits = await aiCommitShare(rootAbs);
+  } catch {
+    /* The AI share widget needs Git; it hides quietly without it. */
+  }
+
   const filesystemRows = files
     .map((file) => dashboardFile(file, isoFromMtime(file.mtime), 'filesystem'))
     .filter((file) => file.updatedAt);
@@ -201,5 +208,6 @@ export async function buildDashboard(tree, rootAbs) {
     agentInstructions,
     skills,
     commands,
+    aiCommits,
   };
 }
