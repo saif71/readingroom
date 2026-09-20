@@ -572,10 +572,84 @@ try {
   writeIn(aiFixture, '.claude/commands/nested/deep.md', 'nested command files are not matched\n');
   writeIn(aiFixture, '.github/prompts/notes.txt', 'not a markdown prompt\n');
 
+  // MCP server inventory (read-only parsing of common config files)
+  writeIn(aiFixture, '.mcp.json', JSON.stringify({
+    mcpServers: {
+      'postgres': {
+        command: 'docker',
+        args: ['run', '-i', '--rm', '-e', 'NODE_PATH=/app/node_modules', 'postgres-mcp'],
+        env: { DATABASE_URL: 'postgres://user:secret@localhost/db', API_KEY: 'sk-live-12345' },
+        type: 'stdio',
+      },
+      'websearch': {
+        url: 'https://search.example.com/mcp',
+        type: 'http',
+        disabled: false,
+      },
+      'disabled-server': {
+        command: 'echo',
+        type: 'stdio',
+        disabled: true,
+      },
+    },
+  }, null, 2));
+  writeIn(aiFixture, '.claude/settings.json', JSON.stringify({
+    mcpServers: {
+      'filesystem': {
+        command: 'npx',
+        args: ['-y', '@modelcontextprotocol/server-filesystem', '/tmp'],
+        type: 'stdio',
+        env: { HOME: '/tmp' },
+      },
+    },
+  }, null, 2));
+  writeIn(aiFixture, '.cursor/mcp.json', JSON.stringify({
+    mcpServers: {
+      'cursor-server': {
+        url: 'https://cursor.example.com/mcp',
+        type: 'sse',
+      },
+    },
+  }, null, 2));
+  writeIn(aiFixture, '.gemini/settings.json', JSON.stringify({
+    mcpServers: {
+      'gemini-server': {
+        command: 'gemini-mcp',
+        type: 'stdio',
+      },
+    },
+  }, null, 2));
+  // Malformed config degrades to hidden widget, not an error
+  writeIn(aiFixture, '.vscode/mcp.json', '{ broken json');
+
   const aapp = await startServer({ root: aiFixture, port: 0, distDir: path.resolve('dist'), openFile: async () => true });
   try {
     const abase = aapp.url;
     const dash = await (await fetch(`${abase}/api/dashboard`)).json();
+
+    check(
+      '/api/dashboard lists MCP servers from common config files with redacted env',
+      Array.isArray(dash.mcpServers) &&
+        dash.mcpServers.length === 5 &&
+        dash.mcpServers.some((s) => s.name === 'postgres' && s.type === 'stdio' && s.command === 'docker' && s.source === '.mcp.json') &&
+        dash.mcpServers.some((s) => s.name === 'websearch' && s.type === 'http' && s.url === 'https://search.example.com/mcp' && s.source === '.mcp.json') &&
+        dash.mcpServers.some((s) => s.name === 'filesystem' && s.type === 'stdio' && s.source === '.claude/settings.json') &&
+        dash.mcpServers.some((s) => s.name === 'cursor-server' && s.type === 'sse' && s.source === '.cursor/mcp.json') &&
+        dash.mcpServers.some((s) => s.name === 'gemini-server' && s.type === 'stdio' && s.source === '.gemini/settings.json') &&
+        !dash.mcpServers.some((s) => s.name === 'disabled-server') &&
+        !dash.mcpServers.some((s) => s.name === 'gemini-server' && s.env && s.env.some((e) => e.value !== undefined)),
+      JSON.stringify(dash.mcpServers),
+    );
+
+    // Ensure no env values leak into the payload (secret redaction)
+    const serialized = JSON.stringify(dash);
+    check(
+      'MCP env values are never emitted into the dashboard payload',
+      !serialized.includes('postgres://user:secret@localhost/db') &&
+        !serialized.includes('sk-live-12345') &&
+        !serialized.includes('/tmp'),
+      serialized,
+    );
 
     const instrPaths = dash.agentInstructions.map((file) => file.path);
     check(

@@ -1,5 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
 import { fetchDashboard, fetchTree, subscribeTree, viewUrl, versionUrl, pathFromViewUrl } from "./api";
+
+// Browser tab title: "<root folder name> - readingroom", or
+// "<path> - <root folder name> - readingroom" while a file is open.
+function useTabTitle(tree, current) {
+  useEffect(() => {
+    const root = tree?.name || "readingroom";
+    if (current) {
+      document.title = `${current} - ${root} - readingroom`;
+    } else {
+      document.title = `${root} - readingroom`;
+    }
+  }, [tree, current]);
+}
 import Sidebar from "./components/Sidebar";
 import Viewer from "./components/Viewer";
 import Inspector from "./components/Inspector";
@@ -54,6 +67,9 @@ export default function App() {
   const [inspectorOpen, setInspectorOpen] = useState(
     () => !window.matchMedia(MOBILE_QUERY).matches && loadOpenFlag("readingroom-inspector-open"),
   );
+
+  // Tab title: show root folder name (and current path if a file is open)
+  useTabTitle(tree, current);
 
   const toggleSidebar = useCallback((open) => {
     setSidebarOpen(open);

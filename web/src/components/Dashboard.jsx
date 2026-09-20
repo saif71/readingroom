@@ -3,6 +3,7 @@ import AICommitsWidget from "./AICommitsWidget";
 import AgentInstructionsWidget from "./AgentInstructionsWidget";
 import CommandsWidget from "./CommandsWidget";
 import FileTypesWidget from "./FileTypesWidget";
+import McpWidget from "./McpWidget";
 import OverviewWidget from "./OverviewWidget";
 import RankedFilesWidget from "./RankedFilesWidget";
 import QRWidget from "./QRWidget";
@@ -148,6 +149,7 @@ function fallbackDashboard(tree) {
     agentInstructions,
     skills,
     commands,
+    mcpServers: [],
   };
 }
 
@@ -221,6 +223,7 @@ export default function Dashboard({ tree, data, error, loading, onOpen }) {
             <div className="grid-2 space-y-4">
               <SkillsWidget skills={model.skills || []} onOpen={onOpen} />
               <CommandsWidget commands={model.commands || []} onOpen={onOpen} />
+              <McpWidget servers={model.mcpServers || []} onOpen={onOpen} />
               <QRWidget />
               <RankedFilesWidget
                 title="Recently updated"

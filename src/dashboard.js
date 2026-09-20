@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { aiCommitShare, latestCommitDates } from './git.js';
 
@@ -183,6 +183,90 @@ export async function buildDashboard(tree, rootAbs) {
     })
     .sort((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path));
 
+function stripComments(jsonc) {
+  // Strip single-line /* */ and // comments, respecting strings.
+  const result = [];
+  let i = 0;
+  let inString = null; // '', ", or null
+  while (i < jsonc.length) {
+    const ch = jsonc[i];
+    if (inString) {
+      if (ch === '\\' && i + 1 < jsonc.length) {
+        result.push(ch, jsonc[i + 1]);
+        i += 2;
+        continue;
+      }
+      if (ch === inString) inString = null;
+      result.push(ch);
+      i++;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      inString = ch;
+      result.push(ch);
+      i++;
+      continue;
+    }
+    if (ch === '/' && i + 1 < jsonc.length && jsonc[i + 1] === '*') {
+      i += 2;
+      while (i + 1 < jsonc.length) {
+        if (jsonc[i] === '*' && jsonc[i + 1] === '/') { i += 2; break; }
+        result.push(jsonc[i]);
+        i++;
+      }
+      if (i < jsonc.length) i++; // skip /
+      continue;
+    }
+    if (ch === '/' && i + 1 < jsonc.length && jsonc[i + 1] === '/') {
+      while (i < jsonc.length && jsonc[i] !== '\n') i++;
+      continue;
+    }
+    result.push(ch);
+    i++;
+  }
+  return result.join('');
+}
+
+function parseMcpConfigFile(absPath, source) {
+  try {
+    const raw = String(readFileSync(absPath, 'utf8'));
+    const clean = stripComments(raw);
+    const cfg = JSON.parse(clean);
+    if (!cfg || typeof cfg.mcpServers !== 'object') return [];
+    const servers = [];
+    for (const [name, config] of Object.entries(cfg.mcpServers)) {
+      if (!config) continue;
+      const server = { name, source };
+      // Redact env values — never emit raw env into the dashboard payload.
+      if (config.env && typeof config.env === 'object') {
+        server.env = Object.keys(config.env).map((k) => ({ key: k, value: undefined }));
+      } else {
+        server.env = [];
+      }
+      // Transport
+      if (config.type) server.type = config.type;
+      if (config.command) server.command = config.command;
+      if (config.url) server.url = config.url;
+      if (config.disabled !== undefined) server.disabled = config.disabled;
+      servers.push(server);
+    }
+    return servers;
+  } catch {
+    return [];
+  }
+}
+
+function mcpConfigPaths(rootAbs) {
+  const candidates = [
+    path.join(rootAbs, '.mcp.json'),
+    path.join(rootAbs, '.claude', 'settings.json'),
+    path.join(rootAbs, '.cursor', 'mcp.json'),
+    path.join(rootAbs, '.vscode', 'mcp.json'),
+    path.join(rootAbs, '.gemini', 'settings.json'),
+  ];
+  return candidates.filter((p) => existsSync(p));
+}
+
   const commands = files
     .flatMap((file) => {
       const meta = commandMeta(file.path);
@@ -197,6 +281,13 @@ export async function buildDashboard(tree, rootAbs) {
     })
     .sort((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path));
 
+  // MCP server inventory (read-only, never writes) — parses common config files.
+  const mcpServers = mcpConfigPaths(rootAbs)
+    .map((abs) => parseMcpConfigFile(abs, abs.replace(rootAbs + path.sep, '').replace(/\\/g, '/')))
+    .flat()
+    .filter((s) => !s.disabled)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
   return {
     fileCount: files.length,
     directoryCount: directories.length,
@@ -209,5 +300,6 @@ export async function buildDashboard(tree, rootAbs) {
     skills,
     commands,
     aiCommits,
+    mcpServers,
   };
 }
