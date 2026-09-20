@@ -245,8 +245,72 @@ function HistoryTab({ path, refSha, refreshKey, onNavigateVersion }) {
 }
 
 /**
- * Right-hand inspector for the open file: Info (metadata) and History (git
- * timeline). Collapses to a thin rail (or a drawer on mobile); open state is
+ * Outline tab: the heading tree of the open markdown file. Tracks which
+ * section is in view (scroll listener on the main reader pane) and scrolls
+ * smoothly to a section on click.
+ */
+function OutlineTab({ outline }) {
+  const [active, setActive] = useState(null);
+
+  useEffect(() => {
+    const els = outline
+      .map((h) => document.getElementById(h.id))
+      .filter(Boolean);
+    if (els.length === 0) return undefined;
+    const onScroll = () => {
+      let current = els[0].id;
+      for (const el of els) {
+        if (el.getBoundingClientRect().top <= 80) current = el.id;
+        else break;
+      }
+      setActive(current);
+    };
+    const target = document.querySelector("main") || window;
+    target.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+    return () => target.removeEventListener("scroll", onScroll);
+  }, [outline]);
+
+  if (outline.length === 0) {
+    return (
+      <p className="px-1 py-4 text-sm text-neutral-400">
+        No headings to outline in this file.
+      </p>
+    );
+  }
+
+  const minLevel = Math.min(...outline.map((h) => h.level));
+  return (
+    <nav className="pt-2" aria-label="Document outline">
+      <ul>
+        {outline.map((h) => (
+          <li key={h.id}>
+            <button
+              onClick={() =>
+                document
+                  .getElementById(h.id)
+                  ?.scrollIntoView({ behavior: "smooth" })
+              }
+              className={`block w-full truncate rounded-md py-1 pr-2 text-left text-xs transition-colors ${
+                active === h.id
+                  ? "font-medium text-sky-600 dark:text-sky-400"
+                  : "text-neutral-600 hover:bg-neutral-200/60 dark:text-neutral-400 dark:hover:bg-neutral-800/60"
+              }`}
+              style={{ paddingLeft: `${(h.level - minLevel) * 12 + 8}px` }}
+              title={h.text}
+            >
+              {h.text}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
+}
+
+/**
+ * Right-hand inspector for the open file: Info (metadata), History (git
+ * timeline), and Outline (markdown headings). Collapses to a thin rail (or a drawer on mobile); open state is
  * controlled by App, the tab choice persists in localStorage. `refSha`
  * highlights the commit being viewed in the Viewer.
  */
@@ -255,15 +319,20 @@ export default function Inspector({
   refSha,
   refreshKey,
   onNavigateVersion,
+  outline,
   open,
   onToggleOpen,
   mobile,
 }) {
-  const [prefs, setPrefs] = useState(loadPrefs); // { tab?: 'info'|'history' }
+  const [prefs, setPrefs] = useState(loadPrefs); // { tab?: 'info'|'history'|'outline' }
   const [repo, setRepo] = useState({ status: "loading" });
   const [meta, setMeta] = useState({ status: "loading" });
 
-  const tab = prefs.tab === "history" ? "history" : "info";
+  const hasOutline = outline != null && outline.length > 0;
+  const tab =
+    prefs.tab === "history" || (prefs.tab === "outline" && hasOutline)
+      ? prefs.tab
+      : "info";
 
   const setPref = (patch) => {
     setPrefs((prev) => {
@@ -353,6 +422,7 @@ export default function Inspector({
             options={[
               { id: "info", label: "Info" },
               { id: "history", label: "History" },
+              ...(hasOutline ? [{ id: "outline", label: "Outline" }] : []),
             ]}
           />
           <button
@@ -422,13 +492,15 @@ export default function Inspector({
       <div className="flex-1 overflow-y-auto px-3 pb-4">
         {tab === "info" ? (
           <InfoTab meta={meta} />
-        ) : (
+        ) : tab === "history" ? (
           <HistoryTab
             path={path}
             refSha={refSha}
             refreshKey={refreshKey}
             onNavigateVersion={onNavigateVersion}
           />
+        ) : (
+          <OutlineTab outline={outline} />
         )}
       </div>
       </aside>

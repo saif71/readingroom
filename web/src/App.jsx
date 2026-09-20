@@ -44,6 +44,8 @@ export default function App() {
   const [dashboard, setDashboard] = useState(null);
   const [dashboardError, setDashboardError] = useState(null);
   const [dashboardLoading, setDashboardLoading] = useState(false);
+  // Headings of the open markdown file, fed to the Inspector's Outline tab.
+  const [outline, setOutline] = useState([]);
 
   const isMobile = useMediaQuery(MOBILE_QUERY);
   const [sidebarOpen, setSidebarOpen] = useState(
@@ -227,6 +229,7 @@ export default function App() {
               refSha={refSha}
               refreshKey={refreshKey}
               onNavigate={navigate}
+              onOutline={setOutline}
             />
           ) : (
             <Dashboard
@@ -244,6 +247,7 @@ export default function App() {
             refSha={refSha}
             refreshKey={refreshKey}
             onNavigateVersion={navigateVersion}
+            outline={outline}
             open={inspectorOpen}
             onToggleOpen={toggleInspector}
             mobile={isMobile}

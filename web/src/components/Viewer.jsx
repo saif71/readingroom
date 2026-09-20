@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { fetchFile, fetchVersion, fileCategoryForPath, isImagePath, isPdfPath, rawUrl, versionRawUrl, downloadUrl, versionDownloadUrl } from '../api';
 import { formatDate } from '../format';
+import { extractHeadings } from '../markdownOutline';
 import MarkdownView from './MarkdownView';
 import TextView from './TextView';
 import ImageView from './ImageView';
@@ -141,12 +142,21 @@ function VersionBanner({ version, onBack }) {
   );
 }
 
-export default function Viewer({ path, refSha, refreshKey, onNavigate }) {
+export default function Viewer({ path, refSha, refreshKey, onNavigate, onOutline }) {
   const [state, setState] = useState({ status: 'loading' });
   const isImage = isImagePath(path);
   const isPdf = isPdfPath(path);
   const pathCategory = fileCategoryForPath(path);
   const isVersion = refSha != null;
+
+  // Outline for the Inspector: headings of the current markdown body (frontmatter
+  // excluded); cleared when a non-markdown file or an error state is shown.
+  const loaded = state.status === 'ok' ? state.file : null;
+  const isMd = loaded != null && (loaded.category === 'markdown' || loaded.kind === 'md');
+  const mdBody = isMd ? splitFrontmatter(loaded.content ?? '')[1] : '';
+  useEffect(() => {
+    onOutline?.(isMd ? extractHeadings(mdBody) : []);
+  }, [onOutline, isMd, mdBody]);
 
   useEffect(() => {
     // Binary kinds render straight from a URL — but a historical version
