@@ -65,6 +65,25 @@ const CATEGORY_ORDER = [
   "other",
 ];
 
+// Reload-readable tree state. The text query is deliberately not persisted —
+// a stale filter on reload is more confusing than helpful.
+const EXPANDED_KEY = "readingroom-tree-expanded";
+const FILTER_KEY = "readingroom-tree-filter";
+
+function loadExpanded() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(EXPANDED_KEY));
+    return Array.isArray(saved) ? new Set(saved) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function loadKind() {
+  const saved = localStorage.getItem(FILTER_KEY);
+  return CATEGORY_ORDER.includes(saved) ? saved : "all";
+}
+
 const THEMES = [
   { id: "system", label: "System" },
   { id: "light", label: "Light" },
@@ -81,8 +100,8 @@ export default function Sidebar({
   onOpenQr,
 }) {
   const [query, setQuery] = useState("");
-  const [kind, setKind] = useState("all");
-  const [expanded, setExpanded] = useState(() => new Set());
+  const [kind, setKind] = useState(loadKind);
+  const [expanded, setExpanded] = useState(loadExpanded);
   const [theme, setTheme] = useTheme();
   const inputRef = useRef(null);
 
@@ -124,6 +143,32 @@ export default function Sidebar({
       return changed ? next : prev;
     });
   }, [selected]);
+
+  // Prune stored expansions that no longer exist after a tree update (SSE etc).
+  useEffect(() => {
+    if (!tree) return;
+    const dirs = new Set(collectDirs(tree));
+    setExpanded((prev) => {
+      const next = new Set([...prev].filter((p) => dirs.has(p)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [tree]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(EXPANDED_KEY, JSON.stringify([...expanded]));
+    } catch {
+      /* storage unavailable — persistence is session-only */
+    }
+  }, [expanded]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(FILTER_KEY, kind);
+    } catch {
+      /* storage unavailable — persistence is session-only */
+    }
+  }, [kind]);
 
   const files = useMemo(() => (tree ? flattenFiles(tree) : []), [tree]);
   const categoryCounts = useMemo(() => {
