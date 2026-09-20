@@ -4,6 +4,7 @@ import { createJavaScriptRegexEngine } from 'shiki/engine/javascript';
 import githubDark from 'shiki/themes/github-dark.mjs';
 import githubLight from 'shiki/themes/github-light.mjs';
 import { useIsDark } from '../theme';
+import { useCopy } from '../clipboard';
 
 // Curated language set — each is a lazy chunk, fetched on first use.
 const LANG_MODULES = {
@@ -89,6 +90,22 @@ function usePrefersDark() {
   return dark;
 }
 
+function CopyBar({ getText }) {
+  const [copied, doCopy] = useCopy();
+  return (
+    <div className="absolute right-2 top-2 z-10 flex opacity-0 transition-opacity group-hover/code:opacity-100 focus-within:opacity-100 max-sm:opacity-100">
+      <button
+        onClick={() => doCopy(getText())}
+        title="Copy"
+        aria-label="Copy code"
+        className="rounded-md border border-neutral-200 bg-white/90 px-2 py-1 text-xs font-medium text-neutral-600 shadow-sm backdrop-blur transition-colors hover:bg-neutral-100 hover:text-neutral-900 dark:border-neutral-700 dark:bg-neutral-800/90 dark:text-neutral-300 dark:hover:bg-neutral-700 dark:hover:text-white"
+      >
+        {copied ? 'Copied ✓' : 'Copy'}
+      </button>
+    </div>
+  );
+}
+
 export default function CodeBlock({ code, lang }) {
   const [html, setHtml] = useState(null);
   const dark = useIsDark();
@@ -115,11 +132,19 @@ export default function CodeBlock({ code, lang }) {
   }, [code, lang, dark]);
 
   if (html) {
-    return <div className="not-prose my-5" dangerouslySetInnerHTML={{ __html: html }} />;
+    return (
+      <div className="group/code relative not-prose my-5">
+        <CopyBar getText={() => code} />
+        <div dangerouslySetInnerHTML={{ __html: html }} />
+      </div>
+    );
   }
   return (
-    <pre className="not-prose my-5 overflow-x-auto rounded-lg bg-neutral-100 p-3 text-[13px] leading-relaxed dark:bg-neutral-900">
-      <code>{code}</code>
-    </pre>
+    <div className="group/code relative not-prose my-5">
+      <CopyBar getText={() => code} />
+      <pre className="overflow-x-auto rounded-lg bg-neutral-100 p-3 text-[13px] leading-relaxed dark:bg-neutral-900">
+        <code>{code}</code>
+      </pre>
+    </div>
   );
 }

@@ -6,6 +6,7 @@ import TextView from './TextView';
 import ImageView from './ImageView';
 import PdfView from './PdfView';
 import CodeBlock from './CodeBlock';
+import { useCopy } from '../clipboard';
 
 /**
  * Split a leading YAML frontmatter block off a markdown document.
@@ -53,27 +54,50 @@ function Centered({ children }) {
   );
 }
 
-function Header({ name, path, downloadUrl }) {
+function Header({ name, path, downloadUrl, copyContent }) {
+  const [copied, doCopy] = useCopy();
+  const canCopy = typeof copyContent === 'string';
   return (
     <header className="mb-6 flex items-start justify-between gap-3 border-b border-neutral-200 pb-4 dark:border-neutral-800">
       <div className="min-w-0">
         <h1 className="text-xl font-semibold tracking-tight">{name}</h1>
         <p className="mt-1 font-mono text-xs text-neutral-400">{path.split('/').join(' / ')}</p>
       </div>
-      {downloadUrl && (
-        <a
-          href={downloadUrl}
-          title="Download"
-          aria-label={`Download ${name}`}
-          className="mt-1 shrink-0 rounded-md p-1.5 text-neutral-500 transition-colors hover:bg-neutral-200/60 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-800/60 dark:hover:text-neutral-200"
-        >
-          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="7 10 12 15 17 10" />
-            <line x1="12" x2="12" y1="15" y2="3" />
-          </svg>
-        </a>
-      )}
+      <div className="mt-1 flex shrink-0 items-center gap-1">
+        {canCopy && (
+          <button
+            onClick={() => doCopy(copyContent)}
+            title="Copy contents"
+            aria-label={`Copy contents of ${name}`}
+            className="rounded-md p-1.5 text-neutral-500 transition-colors hover:bg-neutral-200/60 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-800/60 dark:hover:text-neutral-200"
+          >
+            {copied ? (
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            ) : (
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+                <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+              </svg>
+            )}
+          </button>
+        )}
+        {downloadUrl && (
+          <a
+            href={downloadUrl}
+            title="Download"
+            aria-label={`Download ${name}`}
+            className="rounded-md p-1.5 text-neutral-500 transition-colors hover:bg-neutral-200/60 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-800/60 dark:hover:text-neutral-200"
+          >
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" x2="12" y1="15" y2="3" />
+            </svg>
+          </a>
+        )}
+      </div>
     </header>
   );
 }
@@ -211,7 +235,7 @@ export default function Viewer({ path, refSha, refreshKey, onNavigate }) {
   return (
     <div className="mx-auto max-w-3xl px-6 py-8 sm:px-10">
       {isVersion && <VersionBanner version={file} onBack={() => onNavigate(path)} />}
-      <Header name={file.name} path={file.path} downloadUrl={dlUrl} />
+      <Header name={file.name} path={file.path} downloadUrl={dlUrl} copyContent={file.content} />
       {file.truncated && (
         <div className="not-prose mb-5 rounded-lg border border-amber-300/70 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
           Preview limited to {Math.round((file.previewLimit || file.previewBytes || 0) / 1024)} KiB. Download the file to view the complete contents.
