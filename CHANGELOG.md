@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.4] - 2026-09-25
+
+### Added
+
+- Visual assets gallery: a new `/gallery` page listing every image in the codebase, with name search plus folder and file-type filters, and a lightbox viewer for full-size preview.
+- "Recent images" dashboard widget surfacing the 20 most recently modified images, newest first (by git date when available).
+- MCP server inventory widget on the dashboard: read-only listing of servers configured in `.mcp.json`, `.claude/settings.json`, `.cursor/mcp.json`, `.vscode/mcp.json`, and `.gemini/settings.json` — showing each server's command or URL, env var names (values never exposed), and disabled state. Malformed configs just hide the widget instead of erroring.
+
+### Changed
+
+- The browser tab title now shows the root folder name — and the open file's path while one is being viewed — so multiple readingroom tabs are distinguishable.
+
 ## [0.6.3] - 2026-09-20
 
 ### Added
