@@ -115,6 +115,10 @@ export function viewUrl(path) {
   return '/view/' + path.split('/').map(encodeURIComponent).join('/');
 }
 
+export function galleryUrl() {
+  return '/gallery';
+}
+
 export function versionUrl(path, ref) {
   return viewUrl(path) + `?ref=${encodeURIComponent(ref)}`;
 }

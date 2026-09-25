@@ -1,27 +1,43 @@
 import { useCallback, useEffect, useState } from "react";
-import { fetchDashboard, fetchTree, subscribeTree, viewUrl, versionUrl, pathFromViewUrl } from "./api";
+import {
+  fetchDashboard,
+  fetchTree,
+  subscribeTree,
+  viewUrl,
+  galleryUrl,
+  versionUrl,
+  pathFromViewUrl,
+} from "./api";
 
 // Browser tab title: "<root folder name> - readingroom", or
-// "<path> - <root folder name> - readingroom" while a file is open.
-function useTabTitle(tree, current) {
+// "<path> - <root folder name> - readingroom" while a file is open,
+// or "Gallery - <root folder name> - readingroom" on /gallery.
+function useTabTitle(tree, current, gallery) {
   useEffect(() => {
     const root = tree?.name || "readingroom";
     if (current) {
       document.title = `${current} - ${root} - readingroom`;
+    } else if (gallery) {
+      document.title = `Gallery - ${root} - readingroom`;
     } else {
       document.title = `${root} - readingroom`;
     }
-  }, [tree, current]);
+  }, [tree, current, gallery]);
 }
 import Sidebar from "./components/Sidebar";
 import Viewer from "./components/Viewer";
 import Inspector from "./components/Inspector";
 import QrModal from "./components/QrModal";
 import Dashboard from "./components/Dashboard";
+import Gallery from "./components/Gallery";
 import { EmptyState } from "./components/EmptyState";
 import useMediaQuery from "./useMediaQuery";
 
 const REF_RE = /^[0-9a-f]{7,40}$/i;
+
+function isGalleryPath(pathname) {
+  return pathname === "/gallery" || pathname.startsWith("/gallery/");
+}
 
 // Below md (768px) sidebars become overlay drawers, closed by default.
 const MOBILE_QUERY = "(max-width: 767px)";
@@ -50,6 +66,9 @@ export default function App() {
   const [current, setCurrent] = useState(() =>
     pathFromViewUrl(window.location.pathname),
   );
+  const [gallery, setGallery] = useState(() =>
+    isGalleryPath(window.location.pathname),
+  );
   // Commit sha when a historical version is open (deep-linkable via ?ref=).
   const [refSha, setRefSha] = useState(refFromLocation);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -62,14 +81,18 @@ export default function App() {
 
   const isMobile = useMediaQuery(MOBILE_QUERY);
   const [sidebarOpen, setSidebarOpen] = useState(
-    () => !window.matchMedia(MOBILE_QUERY).matches && loadOpenFlag("readingroom-sidebar-open"),
+    () =>
+      !window.matchMedia(MOBILE_QUERY).matches &&
+      loadOpenFlag("readingroom-sidebar-open"),
   );
   const [inspectorOpen, setInspectorOpen] = useState(
-    () => !window.matchMedia(MOBILE_QUERY).matches && loadOpenFlag("readingroom-inspector-open"),
+    () =>
+      !window.matchMedia(MOBILE_QUERY).matches &&
+      loadOpenFlag("readingroom-inspector-open"),
   );
 
   // Tab title: show root folder name (and current path if a file is open)
-  useTabTitle(tree, current);
+  useTabTitle(tree, current, gallery);
 
   const toggleSidebar = useCallback((open) => {
     setSidebarOpen(open);
@@ -135,7 +158,9 @@ export default function App() {
 
   useEffect(() => {
     const onPop = () => {
-      setCurrent(pathFromViewUrl(window.location.pathname));
+      const pathname = window.location.pathname;
+      setGallery(isGalleryPath(pathname));
+      setCurrent(pathFromViewUrl(pathname));
       setRefSha(refFromLocation());
     };
     window.addEventListener("popstate", onPop);
@@ -146,12 +171,22 @@ export default function App() {
     if (path === null) {
       history.pushState({}, "", "/");
       setCurrent(null);
+      setGallery(false);
     } else {
       history.pushState({}, "", viewUrl(path));
       setCurrent(path);
+      setGallery(false);
       if (window.matchMedia(MOBILE_QUERY).matches) setSidebarOpen(false);
     }
     setRefSha(null);
+  }, []);
+
+  const navigateGallery = useCallback(() => {
+    history.pushState({}, "", galleryUrl());
+    setCurrent(null);
+    setGallery(true);
+    setRefSha(null);
+    if (window.matchMedia(MOBILE_QUERY).matches) setSidebarOpen(false);
   }, []);
 
   const navigateVersion = useCallback((path, sha) => {
@@ -247,6 +282,8 @@ export default function App() {
               onNavigate={navigate}
               onOutline={setOutline}
             />
+          ) : gallery ? (
+            <Gallery tree={tree} onOpenViewer={navigate} />
           ) : (
             <Dashboard
               tree={tree}
@@ -254,6 +291,7 @@ export default function App() {
               error={dashboardError}
               loading={dashboardLoading}
               onOpen={navigate}
+              onOpenGallery={navigateGallery}
             />
           )}
         </main>

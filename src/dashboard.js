@@ -4,6 +4,7 @@ import { aiCommitShare, latestCommitDates } from './git.js';
 
 const CATEGORIES = ['markdown', 'images', 'pdfs', 'text', 'json', 'code', 'other'];
 const RANK_LIMIT = 10;
+const VISUAL_ASSET_LIMIT = 20;
 
 // Instruction files AI coding agents read, matched by basename anywhere in
 // the tree (AGENTS.md is often nested per-package in monorepos).
@@ -109,6 +110,23 @@ function dashboardFile(file, updatedAt, updatedSource) {
   };
 }
 
+function isImageFile(file) {
+  return file.kind === 'img' || file.category === 'images';
+}
+
+function visualAssetRow(file, updatedAt, updatedSource) {
+  const slash = file.path.lastIndexOf('/');
+  return {
+    path: file.path,
+    name: file.name,
+    ext: path.extname(file.name).toLowerCase(),
+    folder: slash === -1 ? '' : file.path.slice(0, slash),
+    size: file.size,
+    updatedAt,
+    updatedSource,
+  };
+}
+
 function byDate(direction) {
   return (a, b) => {
     const aTime = new Date(a.updatedAt).getTime();
@@ -160,6 +178,22 @@ export async function buildDashboard(tree, rootAbs) {
   const oldest = [...filesystemRows]
     .sort(byDate(1))
     .slice(0, RANK_LIMIT);
+
+  const images = files.filter(isImageFile);
+  const visualAssets = {
+    total: images.length,
+    recent: images
+      .map((file) => {
+        const filesystemDate = isoFromMtime(file.mtime);
+        const gitDate = gitDates?.get(file.path) || null;
+        return filesystemDate
+          ? visualAssetRow(file, gitDate || filesystemDate, gitDate ? 'git' : 'filesystem')
+          : null;
+      })
+      .filter(Boolean)
+      .sort(byDate(-1))
+      .slice(0, VISUAL_ASSET_LIMIT),
+  };
 
   const depth = (file) => (file.path.match(/\//g) || []).length;
   const agentInstructions = files
@@ -296,6 +330,7 @@ function mcpConfigPaths(rootAbs) {
     gitAvailable: gitDates !== null,
     recent,
     oldest,
+    visualAssets,
     agentInstructions,
     skills,
     commands,

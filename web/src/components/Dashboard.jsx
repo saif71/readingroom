@@ -8,6 +8,7 @@ import OverviewWidget from "./OverviewWidget";
 import RankedFilesWidget from "./RankedFilesWidget";
 import QRWidget from "./QRWidget";
 import SkillsWidget from "./SkillsWidget";
+import VisualAssetsWidget from "./VisualAssetsWidget";
 import folderIcon from "../icons/folder.svg";
 
 const CATEGORIES = [
@@ -51,6 +52,23 @@ function commandMeta(filePath) {
 function isAgentInstructionFile(filePath) {
   if (AGENT_INSTRUCTION_NAMES.has(filePath.split("/").pop())) return true;
   return AGENT_INSTRUCTION_PATH_RES.some((re) => re.test(filePath));
+}
+
+function isImageFile(file) {
+  return file.kind === "img" || file.category === "images";
+}
+
+function visualAssetRow(file, updatedAt) {
+  const slash = file.path.lastIndexOf("/");
+  return {
+    path: file.path,
+    name: file.name,
+    ext: (file.name.match(/(\.[^.]+)$/)?.[1] || "").toLowerCase(),
+    folder: slash === -1 ? "" : file.path.slice(0, slash),
+    size: file.size,
+    updatedAt,
+    updatedSource: "filesystem",
+  };
 }
 
 function fallbackDashboard(tree) {
@@ -107,7 +125,9 @@ function fallbackDashboard(tree) {
           ]
         : [];
     })
-    .sort((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path));
+    .sort(
+      (a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path),
+    );
   const commands = rows
     .flatMap((file) => {
       const meta = commandMeta(file.path);
@@ -123,7 +143,9 @@ function fallbackDashboard(tree) {
           ]
         : [];
     })
-    .sort((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path));
+    .sort(
+      (a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path),
+    );
 
   return {
     fileCount: files.length,
@@ -146,6 +168,20 @@ function fallbackDashboard(tree) {
           a.path.localeCompare(b.path),
       )
       .slice(0, 10),
+    visualAssets: (() => {
+      const images = rows.filter((file) => isImageFile(file));
+      return {
+        total: images.length,
+        recent: [...images]
+          .sort(
+            (a, b) =>
+              new Date(b.updatedAt) - new Date(a.updatedAt) ||
+              a.path.localeCompare(b.path),
+          )
+          .slice(0, 20)
+          .map((file) => visualAssetRow(file, file.updatedAt)),
+      };
+    })(),
     agentInstructions,
     skills,
     commands,
@@ -161,7 +197,14 @@ function timestampSummary(data) {
   return "";
 }
 
-export default function Dashboard({ tree, data, error, loading, onOpen }) {
+export default function Dashboard({
+  tree,
+  data,
+  error,
+  loading,
+  onOpen,
+  onOpenGallery,
+}) {
   const fallback = useMemo(() => fallbackDashboard(tree), [tree]);
   const model = data || fallback;
   const errorMessage = error
@@ -209,6 +252,12 @@ export default function Dashboard({ tree, data, error, loading, onOpen }) {
               <AgentInstructionsWidget
                 files={model.agentInstructions || []}
                 onOpen={onOpen}
+              />
+
+              <VisualAssetsWidget
+                visualAssets={model.visualAssets || { total: 0, recent: [] }}
+                onOpenViewer={onOpen}
+                onOpenGallery={onOpenGallery}
               />
               <AICommitsWidget aiCommits={model.aiCommits || null} />
               <FileTypesWidget byCategory={model.byCategory} />

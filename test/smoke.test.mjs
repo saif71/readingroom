@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync, appendFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync, appendFileSync, utimesSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -168,6 +168,23 @@ try {
       JSON.stringify({ recent: dashboard.recent.length, oldest: dashboard.oldest.length })
     );
 
+    // 2c. Visual assets: image-only newest-first sample for the dashboard widget.
+    const imagePaths = flattenTree(tree)
+      .filter((node) => node.kind === 'img' || node.category === 'images')
+      .map((node) => node.path)
+      .sort();
+    const visual = dashboard.visualAssets;
+    check(
+      '/api/dashboard returns visualAssets for image files only',
+      visual &&
+        visual.total === 4 &&
+        visual.recent.length === 4 &&
+        visual.recent.every((file) => imagePaths.includes(file.path)) &&
+        visual.recent.every((file) => ['.png', '.jpg', '.svg', '.webp'].includes(file.ext)) &&
+        visual.recent.every((file) => typeof file.folder === 'string' && typeof file.size === 'number' && file.updatedAt),
+      JSON.stringify(visual)
+    );
+
     // 3. File content.
     const fileRes = await fetch(`${base}/api/file?p=${encodeURIComponent('README.md')}`);
     const file = await fileRes.json();
@@ -270,8 +287,8 @@ try {
       });
     });
 
-    // 11. SPA shell served for / and /view/... when dist exists.
-    for (const route of ['/', '/view/README.md']) {
+    // 11. SPA shell served for /, /gallery, and /view/... when dist exists.
+    for (const route of ['/', '/gallery', '/view/README.md']) {
       const res = await fetch(base + route);
       const body = await res.text();
       check(`SPA shell at ${route}`, res.ok && body.includes('<div id="root">'));
@@ -971,6 +988,56 @@ try {
   rmSync(fixture2, { recursive: true, force: true });
 } catch (err) {
   check('split-state tests run', false, err.message);
+}
+
+// --- Visual assets gallery ----------------------------------------------------
+try {
+  const galleryFixture = mkdtempSync(path.join(tmpdir(), 'readingroom-gallery-'));
+  // 25 images so the 20-item widget sample can be verified, with staggered mtimes.
+  for (let i = 0; i < 25; i++) {
+    const rel = `assets/img-${String(i).padStart(2, '0')}.png`;
+    writeIn(galleryFixture, rel, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    const when = new Date(Date.UTC(2025, 0, 1) + i * 60_000);
+    utimesSync(path.join(galleryFixture, rel), when, when);
+  }
+  writeIn(galleryFixture, 'docs/shot.jpg', Buffer.from([0xff, 0xd8, 0xff, 0xd8]));
+  writeIn(galleryFixture, 'docs/notes.md', 'not an image\n');
+  const whenJpg = new Date(Date.UTC(2025, 5, 1));
+  utimesSync(path.join(galleryFixture, 'docs/shot.jpg'), whenJpg, whenJpg);
+
+  const gapp = await startServer({ root: galleryFixture, port: 0, distDir: path.resolve('dist'), openFile: async () => true });
+  try {
+    const gbase = gapp.url;
+    const gdash = await (await fetch(`${gbase}/api/dashboard`)).json();
+    const visual = gdash.visualAssets;
+
+    check(
+      'visualAssets caps the sample at 20 and sorts newest-first',
+      visual.total === 26 &&
+        visual.recent.length === 20 &&
+        visual.recent[0].path === 'docs/shot.jpg' &&
+        visual.recent[1].path === 'assets/img-24.png' &&
+        visual.recent[19].path === 'assets/img-06.png' &&
+        visual.recent.every((file) => file.path !== 'docs/notes.md'),
+      JSON.stringify(visual.recent.map((file) => file.path))
+    );
+
+    check(
+      'visualAssets rows carry folder and ext for gallery filters',
+      visual.recent.some((file) => file.path === 'docs/shot.jpg' && file.folder === 'docs' && file.ext === '.jpg') &&
+        visual.recent.some((file) => file.path === 'assets/img-24.png' && file.folder === 'assets' && file.ext === '.png'),
+      JSON.stringify(visual.recent.slice(0, 3))
+    );
+
+    const galleryShell = await fetch(`${gbase}/gallery`);
+    const galleryBody = await galleryShell.text();
+    check('SPA shell at /gallery', galleryShell.ok && galleryBody.includes('<div id="root">'));
+  } finally {
+    await gapp.close();
+  }
+  rmSync(galleryFixture, { recursive: true, force: true });
+} catch (err) {
+  check('visual asset gallery tests run', false, err.message);
 }
 
 failures = results.filter((r) => !r.ok).length;
