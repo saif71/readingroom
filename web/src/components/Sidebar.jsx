@@ -4,6 +4,24 @@ import Segmented from "./Segmented";
 import { fuzzyMatch } from "../fuzzy";
 import { useTheme } from "../theme";
 import folderIcon from "../icons/folder.svg";
+import AiSidebar from "./AiSidebar";
+
+function AiIcon() {
+  return (
+    <svg
+      className="h-4 w-4"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="m12 2 1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8L12 2Z" />
+      <path d="m19 17 .7 2.3L22 20l-2.3.7L19 23l-.7-2.3L16 20l2.3-.7L19 17Z" />
+    </svg>
+  );
+}
 
 function flattenFiles(node, out = []) {
   for (const child of node.children || []) {
@@ -103,7 +121,12 @@ export default function Sidebar({
   const [kind, setKind] = useState(loadKind);
   const [expanded, setExpanded] = useState(loadExpanded);
   const [theme, setTheme] = useTheme();
+  const [mode, setMode] = useState("files");
   const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (mobile) setMode("files");
+  }, [mobile]);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -275,6 +298,17 @@ export default function Sidebar({
             <path d="m13 9 3 3-3 3" />
           </svg>
         </button>
+        <button
+          onClick={() => {
+            setMode("ai");
+            onToggleOpen(true);
+          }}
+          title="Open tools"
+          aria-label="Open tools"
+          className="mt-1 rounded-md p-1.5 text-neutral-500 transition-colors hover:bg-neutral-200/60 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700/60 dark:hover:text-neutral-200"
+        >
+          <AiIcon />
+        </button>
         {onOpenQr && (
           <button
             onClick={onOpenQr}
@@ -313,7 +347,9 @@ export default function Sidebar({
         className={`${
           mobile
             ? "fixed inset-y-0 left-0 z-40 w-72 max-w-[85vw] shadow-xl"
-            : "w-72 shrink-0  sm:w-80"
+            : mode === "ai"
+              ? "w-[min(65vw,500px)] shrink-0"
+              : "w-72 shrink-0 sm:w-80"
         } flex h-full flex-col bg-zinc-100 dark:border-neutral-800 dark:bg-neutral-800`}
       >
         <div className="px-3 pb-2 pt-3">
@@ -324,16 +360,30 @@ export default function Sidebar({
                 alt="Folder icon"
                 className="inline-block w-4 h-4 mr-2"
               />
-              readingroom
+              {mode === "ai" ? "Tools" : "readingroom"}
             </span>
             {/* <span className="truncate text-xs text-neutral-400">
               {tree ? `${tree.count} files` : "…"}
             </span> */}
+            {!mobile && (
+              <button
+                onClick={() => setMode(mode === "ai" ? "files" : "ai")}
+                title={mode === "ai" ? "Show file tree" : "Open tools"}
+                aria-label={mode === "ai" ? "Show file tree" : "Open tools"}
+                className="ml-auto rounded-md p-1.5 text-neutral-500 transition-colors hover:bg-neutral-200/60 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700/60 dark:hover:text-neutral-200"
+              >
+                {mode === "ai" ? (
+                  <img src={folderIcon} alt="" className="h-4 w-4" />
+                ) : (
+                  <AiIcon />
+                )}
+              </button>
+            )}
             <button
               onClick={() => (window.location.href = "/")}
               title="home"
               aria-label="home"
-              className="ml-auto rounded-md p-1.5 text-neutral-500 transition-colors hover:bg-neutral-200/60 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700/60 dark:hover:text-neutral-200 cursor-pointer"
+              className="rounded-md p-1.5 text-neutral-500 transition-colors hover:bg-neutral-200/60 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700/60 dark:hover:text-neutral-200 cursor-pointer"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -372,8 +422,8 @@ export default function Sidebar({
             )}
             <button
               onClick={() => onToggleOpen(false)}
-              title="Hide file tree"
-              aria-label="Hide file tree"
+              title="Hide sidebar"
+              aria-label="Hide sidebar"
               className="shrink-0 rounded-md p-1 text-neutral-500 transition-colors hover:bg-neutral-200/60 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700/60 dark:hover:text-neutral-200  cursor-pointer"
             >
               <svg
@@ -391,102 +441,114 @@ export default function Sidebar({
               </svg>
             </button>
           </div>
-          <input
-            ref={inputRef}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Filter files…  /"
-            spellCheck={false}
-            className="w-full rounded-md border border-neutral-200 bg-white px-2.5 py-1.5 text-sm outline-none placeholder:text-neutral-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-500/30 dark:border-neutral-700 dark:bg-neutral-900"
-          />
-          <div className="flex flex-wrap gap-1 pt-2">
-            {chips.map((chip) => (
-              <button
-                key={chip.id}
-                onClick={() => setKind(chip.id)}
-                className={`rounded-full border px-2 py-0.5 text-xs transition-colors ${
-                  kind === chip.id
-                    ? "border-sky-500/60 bg-sky-500/15 text-sky-700 dark:text-sky-300"
-                    : "border-neutral-200 text-neutral-500 hover:border-neutral-300 hover:text-neutral-700 dark:border-neutral-700 dark:text-neutral-400 dark:hover:border-neutral-600 dark:hover:text-neutral-200"
-                }`}
-              >
-                {chip.label}{" "}
-                <span className="tabular-nums opacity-70">{chip.count}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-        <nav className="flex-1 overflow-y-auto px-2 pb-4">
-          {!tree ? (
-            <p className="px-2 py-4 text-sm text-neutral-400">Scanning…</p>
-          ) : matches ? (
-            matches.length === 0 ? (
-              <p className="px-2 py-4 text-sm text-neutral-400">
-                No files match “{query.trim()}”.
-              </p>
-            ) : (
-              <ul className="mt-1 space-y-0.5">
-                {matches.map(({ file }) => {
-                  const dir = file.path.includes("/")
-                    ? file.path.slice(0, file.path.lastIndexOf("/"))
-                    : "";
-                  return (
-                    <li key={file.path}>
-                      <button
-                        onClick={() => onSelect(file.path)}
-                        className={`flex w-full flex-col rounded-md px-2 py-1.5 text-left text-sm ${
-                          file.path === selected
-                            ? "bg-sky-500/15 text-sky-700 dark:text-sky-300"
-                            : "hover:bg-neutral-200/60 dark:hover:bg-neutral-800/60"
-                        }`}
-                      >
-                        <span className="truncate font-medium">
-                          {file.name}
-                        </span>
-                        {dir && (
-                          <span className="truncate text-xs text-neutral-400">
-                            {dir}
-                          </span>
-                        )}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )
-          ) : visibleTree ? (
-            <Tree
-              node={visibleTree}
-              expanded={expanded}
-              onToggle={toggle}
-              selected={selected}
-              onSelect={onSelect}
-            />
-          ) : (
-            <p className="px-2 py-4 text-sm text-neutral-400">
-              No files of this type.
-            </p>
+          {mode === "files" && (
+            <>
+              <input
+                ref={inputRef}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Filter files…  /"
+                spellCheck={false}
+                className="w-full rounded-md border border-neutral-200 bg-white px-2.5 py-1.5 text-sm outline-none placeholder:text-neutral-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-500/30 dark:border-neutral-700 dark:bg-neutral-900"
+              />
+              <div className="flex flex-wrap gap-1 pt-2">
+                {chips.map((chip) => (
+                  <button
+                    key={chip.id}
+                    onClick={() => setKind(chip.id)}
+                    className={`rounded-full border px-2 py-0.5 text-xs transition-colors ${
+                      kind === chip.id
+                        ? "border-sky-500/60 bg-sky-500/15 text-sky-700 dark:text-sky-300"
+                        : "border-neutral-200 text-neutral-500 hover:border-neutral-300 hover:text-neutral-700 dark:border-neutral-700 dark:text-neutral-400 dark:hover:border-neutral-600 dark:hover:text-neutral-200"
+                    }`}
+                  >
+                    {chip.label}{" "}
+                    <span className="tabular-nums opacity-70">
+                      {chip.count}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </>
           )}
-        </nav>
-        <div className="space-y-2 border-t border-neutral-200 px-3 py-2.5 dark:border-neutral-800">
-          <Segmented
-            label="File tree"
-            value={treeState}
-            onSelect={(id) =>
-              setExpanded(id === "expand" ? new Set(dirPaths) : new Set())
-            }
-            options={[
-              { id: "expand", label: "Expand all" },
-              { id: "collapse", label: "Collapse all" },
-            ]}
-          />
-          <Segmented
-            label="Theme"
-            value={theme}
-            onSelect={setTheme}
-            options={THEMES}
-          />
         </div>
+        {mode === "ai" ? (
+          <AiSidebar />
+        ) : (
+          <>
+            <nav className="flex-1 overflow-y-auto px-2 pb-4">
+              {!tree ? (
+                <p className="px-2 py-4 text-sm text-neutral-400">Scanning…</p>
+              ) : matches ? (
+                matches.length === 0 ? (
+                  <p className="px-2 py-4 text-sm text-neutral-400">
+                    No files match “{query.trim()}”.
+                  </p>
+                ) : (
+                  <ul className="mt-1 space-y-0.5">
+                    {matches.map(({ file }) => {
+                      const dir = file.path.includes("/")
+                        ? file.path.slice(0, file.path.lastIndexOf("/"))
+                        : "";
+                      return (
+                        <li key={file.path}>
+                          <button
+                            onClick={() => onSelect(file.path)}
+                            className={`flex w-full flex-col rounded-md px-2 py-1.5 text-left text-sm ${
+                              file.path === selected
+                                ? "bg-sky-500/15 text-sky-700 dark:text-sky-300"
+                                : "hover:bg-neutral-200/60 dark:hover:bg-neutral-800/60"
+                            }`}
+                          >
+                            <span className="truncate font-medium">
+                              {file.name}
+                            </span>
+                            {dir && (
+                              <span className="truncate text-xs text-neutral-400">
+                                {dir}
+                              </span>
+                            )}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )
+              ) : visibleTree ? (
+                <Tree
+                  node={visibleTree}
+                  expanded={expanded}
+                  onToggle={toggle}
+                  selected={selected}
+                  onSelect={onSelect}
+                />
+              ) : (
+                <p className="px-2 py-4 text-sm text-neutral-400">
+                  No files of this type.
+                </p>
+              )}
+            </nav>
+            <div className="space-y-2 border-t border-neutral-200 px-3 py-2.5 dark:border-neutral-800">
+              <Segmented
+                label="File tree"
+                value={treeState}
+                onSelect={(id) =>
+                  setExpanded(id === "expand" ? new Set(dirPaths) : new Set())
+                }
+                options={[
+                  { id: "expand", label: "Expand all" },
+                  { id: "collapse", label: "Collapse all" },
+                ]}
+              />
+              <Segmented
+                label="Theme"
+                value={theme}
+                onSelect={setTheme}
+                options={THEMES}
+              />
+            </div>
+          </>
+        )}
       </aside>
     </>
   );

@@ -21,8 +21,8 @@ Options:
   -v, --version         Show version
 
 It scans the directory for .md, .txt, image, and PDF files (respecting
-.gitignore and skipping node_modules and friends) and serves a read-only
-browser UI.
+.gitignore and skipping node_modules and friends) and serves a project
+browser UI. Optional AI tools run in its sidebar terminal.
 `;
 
 function parseArgs(argv) {

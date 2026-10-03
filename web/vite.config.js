@@ -17,7 +17,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       // Frontend dev server talks to the real readingroom server.
-      '/api': 'http://127.0.0.1:9345',
+      '/api': { target: 'http://127.0.0.1:9345', ws: true },
     },
   },
 });

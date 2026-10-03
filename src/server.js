@@ -8,6 +8,8 @@ import { openExternal } from './openBrowser.js';
 import { repoStatus, lastCommitFor, fileHistory, fileVersion, VersionNotFound } from './git.js';
 import { buildDashboard } from './dashboard.js';
 import { startQuickTunnel } from './tunnel.js';
+import { WebSocketServer, WebSocket } from 'ws';
+import { installedAiTools, startAiPty } from './aiTools.js';
 
 const MIME = {
   '.md': 'text/markdown; charset=utf-8',
@@ -182,6 +184,8 @@ export async function startServer({
   distDir,
   autoIncrementLimit = 100,
   openFile = openExternal,
+  listAiTools = installedAiTools,
+  openAiSession = startAiPty,
   startTunnelImpl = startQuickTunnel,
 }) {
   const rootAbs = path.resolve(root);
@@ -323,6 +327,19 @@ export async function startServer({
     try {
       const url = new URL(req.url, 'http://127.0.0.1');
       const pathname = url.pathname;
+
+      if (pathname === '/api/ai/tools') {
+        if (channel !== 'local') {
+          sendJson(res, 403, { error: 'desktop only' });
+          return;
+        }
+        if (req.method !== 'GET') {
+          sendJson(res, 405, { error: 'method not allowed' });
+          return;
+        }
+        sendJson(res, 200, { tools: listAiTools() });
+        return;
+      }
 
       if (pathname === '/api/tree') {
         sendJson(res, 200, cachedTree);
@@ -904,6 +921,63 @@ export async function startServer({
     });
   });
 
+  const terminalSockets = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 });
+  const activePtys = new Set();
+  server.on('upgrade', (req, socket, head) => {
+    let url;
+    try { url = new URL(req.url, 'http://127.0.0.1'); }
+    catch { socket.destroy(); return; }
+    // The WebSocket can execute a CLI, so accept only this exact endpoint
+    // from a page served by the local listener. Paired-device connections
+    // never reach this server.
+    if (!loopbackHost(req.headers.host) ||
+        req.headers.origin !== `http://${req.headers.host}` ||
+        url.pathname !== '/api/ai/terminal') {
+      socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+    if (activePtys.size >= 4) {
+      socket.write('HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+    const id = url.searchParams.get('id');
+    terminalSockets.handleUpgrade(req, socket, head, (ws) => {
+      let term;
+      try { term = openAiSession(id, rootAbs); }
+      catch (err) {
+        ws.send(JSON.stringify({ type: 'error', message: err.message }));
+        ws.close();
+        return;
+      }
+      activePtys.add(term);
+      const send = (message) => {
+        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message));
+      };
+      term.onData((data) => send({ type: 'data', data }));
+      term.onExit(({ exitCode }) => {
+        activePtys.delete(term);
+        send({ type: 'exit', code: exitCode });
+        ws.close();
+      });
+      ws.on('message', (raw) => {
+        let message;
+        try { message = JSON.parse(raw.toString()); }
+        catch { return; }
+        if (message.type === 'input' && typeof message.data === 'string' && message.data.length <= 8192) {
+          term.write(message.data);
+        } else if (message.type === 'resize' &&
+                   Number.isInteger(message.cols) && Number.isInteger(message.rows)) {
+          term.resize(Math.max(20, Math.min(300, message.cols)), Math.max(5, Math.min(100, message.rows)));
+        }
+      });
+      ws.on('close', () => {
+        if (activePtys.delete(term)) term.kill();
+      });
+    });
+  });
+
   const actualPort = await listen(server, port, autoIncrementLimit);
 
   return {
@@ -924,6 +998,10 @@ export async function startServer({
       clearTimeout(rescanTimer);
       clearInterval(heartbeat);
       watcher?.close();
+      for (const ws of terminalSockets.clients) ws.terminate();
+      for (const term of activePtys) term.kill();
+      activePtys.clear();
+      terminalSockets.close();
       for (const res of sseClients) res.end();
       if (lanServer) {
         lanServer.close();

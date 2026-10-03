@@ -37,7 +37,7 @@ It stays out of your way:
 - Your `.gitignore` is respected (including nested `.gitignore` files)
 - `node_modules`, `.git`, `dist`, `build`, `out`, `.next`, `target`, `coverage`, and friends are always skipped
 - Symlinks are not followed; there is no file size limit - if your browser can handle it, it gets listed
-- It is strictly **read-only** - readingroom never writes to your project
+- Readingroom's file browser is **read-only**; tools you run in the terminal can edit your project
 
 ## Demo
 
@@ -50,6 +50,12 @@ It stays out of your way:
 Open a file and the panel on the right tells you about it: how big it is, how long it takes to read, and - if your project uses git - who last touched it. The **History** tab goes further back in time: every saved change is listed, and clicking one shows you the file exactly as it was at that point.
 
 The download button next to the file name at the top always saves what you're looking at - open the current file and you get the current version, open a version from History and you get that one.
+
+## Tools
+
+Click the tools icon in the sidebar, then choose **Terminal** to open your default shell in the project directory. Run Vim, Nano, Git, tests, or any other tools available in your CLI. Closing the session stops the shell.
+
+The panel also shows supported AI CLI tools installed on your computer. Choose one to open its interactive terminal inside Readingroom. Closing the session stops the CLI. Readingroom does not provide an AI model, account, or chat service; each CLI uses its own setup and credentials. If none are installed, the panel links to tools you can install. Use **Check again** after installing one.
 
 ## CLI
 
