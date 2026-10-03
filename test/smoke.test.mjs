@@ -3,6 +3,9 @@ import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
+import { once } from 'node:events';
+import WebSocket from 'ws';
+import { installedAiTools, startAiPty } from '../src/aiTools.js';
 import { startServer } from '../src/server.js';
 import { scanAllTree } from '../src/scanner.js';
 import { qrEncode, rsSyndromes, MAX_INPUT_BYTES } from '../web/src/vendor/qr.js';
@@ -86,8 +89,31 @@ const EXPECTED = [
 ];
 
 let failures = 0;
+check('Tools includes a general terminal without an AI CLI', installedAiTools().some((tool) => tool.id === 'terminal' && tool.installed));
+if (process.platform !== 'win32') {
+  const previousShell = process.env.SHELL;
+  try {
+    process.env.SHELL = '/bin/sh';
+    const output = await new Promise((resolve, reject) => {
+      const term = startAiPty('terminal', fixture);
+      let data = '';
+      const timeout = setTimeout(() => { term.kill(); reject(new Error('shell test timed out')); }, 5000);
+      term.onData((chunk) => { data += chunk; });
+      term.onExit(() => { clearTimeout(timeout); resolve(data.replace(/\r/g, '')); });
+      term.write("test -t 0 && printf '\\nRR_CWD:'; pwd; exit\r");
+    });
+    check('general terminal opens an interactive shell in the project root', output.includes(`RR_CWD:${fixture}\n`));
+  } catch (err) {
+    check('general terminal opens an interactive shell in the project root', false, err.message);
+  } finally {
+    if (previousShell === undefined) delete process.env.SHELL;
+    else process.env.SHELL = previousShell;
+  }
+}
 try {
   const openedWith = []; // records what the system-opener stub was asked to open
+  const aiSessions = [];
+  const aiInputs = [];
   const app = await startServer({
     root: fixture,
     port: 0,
@@ -95,6 +121,13 @@ try {
     openFile: async (abs) => {
       openedWith.push(abs);
       return true;
+    },
+    listAiTools: () => [{ id: 'opencode', name: 'OpenCode', installed: true }],
+    openAiSession: (id, cwd) => {
+      const session = { id, cwd, killed: false, onData(fn) { this.emitData = fn; }, onExit() {},
+        write(data) { aiInputs.push(data); this.emitData(data); }, resize() {}, kill() { this.killed = true; } };
+      aiSessions.push(session);
+      return session;
     },
   });
   const base = app.url;
@@ -273,6 +306,26 @@ try {
 
     const openPngRes = await fetch(`${base}/api/open?p=img.png`, { method: 'POST' });
     check('/api/open rejects non-pdf files', openPngRes.status === 400, `status=${openPngRes.status}`);
+
+    const aiToolsRes = await fetch(`${base}/api/ai/tools`);
+    check('AI tools are listed locally', aiToolsRes.ok && (await aiToolsRes.json()).tools[0].id === 'opencode');
+    const wsUrl = `${base.replace('http:', 'ws:')}/api/ai/terminal?id=opencode`;
+    const aiSocket = new WebSocket(wsUrl, { origin: base });
+    await once(aiSocket, 'open');
+    check('AI terminal starts in the project root', aiSessions.length === 1 && aiSessions[0].cwd === fixture);
+    aiSocket.send(JSON.stringify({ type: 'input', data: 'hello' }));
+    const [aiOutput] = await once(aiSocket, 'message');
+    check('AI terminal relays interactive input and output', aiInputs[0] === 'hello' && JSON.parse(aiOutput).data === 'hello');
+    aiSocket.close();
+    await once(aiSocket, 'close');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    check('closing the AI terminal stops its process', aiSessions[0].killed);
+    const rejected = await new Promise((resolve) => {
+      const socket = new WebSocket(wsUrl, { origin: 'https://example.com' });
+      socket.on('unexpected-response', (_req, res) => { res.resume(); resolve(res.statusCode); });
+      socket.on('error', () => resolve(0));
+    });
+    check('cross-origin AI terminal is rejected', rejected === 403 && aiSessions.length === 1);
 
     // 10. Forged Host header rejected.
     await new Promise((resolve) => {
@@ -871,6 +924,8 @@ try {
     // Desktop-only surface: system-app opener and control API.
     const openRes = await fetch(`${mobileBase}/api/open?p=doc.pdf`, { method: 'POST', headers: { Cookie: cookieValue } });
     check('/api/open is refused on the mobile listener', openRes.status === 403, `status=${openRes.status}`);
+    const mobileAiRes = await fetch(`${mobileBase}/api/ai/tools`, { headers: { Cookie: cookieValue } });
+    check('AI tools are hidden from paired devices', mobileAiRes.status === 403, `status=${mobileAiRes.status}`);
 
     const ctrlRes = await fetch(`${mobileBase}/api/mobile`, { headers: { Cookie: cookieValue } });
     check('control API is loopback-only', ctrlRes.status === 403, `status=${ctrlRes.status}`);

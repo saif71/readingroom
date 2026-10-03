@@ -1,13 +1,23 @@
-import { useEffect, useState } from 'react';
-import { fetchFile, fetchVersion, fileCategoryForPath, isImagePath, isPdfPath, rawUrl, versionRawUrl, downloadUrl, versionDownloadUrl } from '../api';
-import { formatDate } from '../format';
-import { extractHeadings } from '../markdownOutline';
-import MarkdownView from './MarkdownView';
-import TextView from './TextView';
-import ImageView from './ImageView';
-import PdfView from './PdfView';
-import CodeBlock from './CodeBlock';
-import { useCopy } from '../clipboard';
+import { useEffect, useState } from "react";
+import {
+  fetchFile,
+  fetchVersion,
+  fileCategoryForPath,
+  isImagePath,
+  isPdfPath,
+  rawUrl,
+  versionRawUrl,
+  downloadUrl,
+  versionDownloadUrl,
+} from "../api";
+import { formatDate } from "../format";
+import { extractHeadings } from "../markdownOutline";
+import MarkdownView from "./MarkdownView";
+import TextView from "./TextView";
+import ImageView from "./ImageView";
+import PdfView from "./PdfView";
+import CodeBlock from "./CodeBlock";
+import { useCopy } from "../clipboard";
 
 /**
  * Split a leading YAML frontmatter block off a markdown document.
@@ -17,13 +27,13 @@ function splitFrontmatter(content) {
   if (!/^---\r?\n/.test(content)) return [null, content];
   const lines = content.split(/\r?\n/);
   for (let i = 1; i < lines.length; i++) {
-    if (lines[i] === '---' || lines[i] === '...') {
+    if (lines[i] === "---" || lines[i] === "...") {
       const meta = {};
       for (const line of lines.slice(1, i)) {
         const m = line.match(/^([^\s#][^:]*):\s*(.*)$/);
         if (m) meta[m[1].trim()] = m[2].trim();
       }
-      return [meta, lines.slice(i + 1).join('\n')];
+      return [meta, lines.slice(i + 1).join("\n")];
     }
   }
   return [null, content];
@@ -38,7 +48,9 @@ function Frontmatter({ meta }) {
       <dl className="border-t border-neutral-200 px-3 py-2 dark:border-neutral-800">
         {Object.entries(meta).map(([key, value]) => (
           <div key={key} className="flex gap-3 py-0.5">
-            <dt className="w-40 shrink-0 font-mono text-xs text-neutral-500 dark:text-neutral-400">{key}</dt>
+            <dt className="w-40 shrink-0 font-mono text-xs text-neutral-500 dark:text-neutral-400">
+              {key}
+            </dt>
             <dd className="min-w-0 break-words font-mono text-xs">{value}</dd>
           </div>
         ))}
@@ -55,14 +67,25 @@ function Centered({ children }) {
   );
 }
 
-function Header({ name, path, downloadUrl, copyContent }) {
+function Header({ name, path, downloadUrl, copyContent, onNavigate }) {
   const [copied, doCopy] = useCopy();
-  const canCopy = typeof copyContent === 'string';
+  const canCopy = typeof copyContent === "string";
+  const goHome = (e) => {
+    e.preventDefault();
+    onNavigate?.(null);
+  };
   return (
     <header className="mb-6 flex items-start justify-between gap-3 border-b border-neutral-200 pb-4 dark:border-neutral-800">
       <div className="min-w-0">
-        <h1 className="text-xl font-semibold tracking-tight">{name}</h1>
-        <p className="mt-1 font-mono text-xs text-neutral-400">{path.split('/').join(' / ')}</p>
+        <h1 className="text-xl font-semibold tracking-tight">
+          <a href="/" onClick={goHome}>
+            ←
+          </a>{" "}
+          {name}
+        </h1>
+        <p className="mt-1 font-mono text-xs text-neutral-400">
+          {path.split("/").join(" / ")}
+        </p>
       </div>
       <div className="mt-1 flex shrink-0 items-center gap-1">
         {canCopy && (
@@ -73,11 +96,27 @@ function Header({ name, path, downloadUrl, copyContent }) {
             className="rounded-md p-1.5 text-neutral-500 transition-colors hover:bg-neutral-200/60 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-800/60 dark:hover:text-neutral-200"
           >
             {copied ? (
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg
+                className="h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
                 <polyline points="20 6 9 17 4 12" />
               </svg>
             ) : (
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg
+                className="h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
                 <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
                 <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
               </svg>
@@ -91,7 +130,15 @@ function Header({ name, path, downloadUrl, copyContent }) {
             aria-label={`Download ${name}`}
             className="rounded-md p-1.5 text-neutral-500 transition-colors hover:bg-neutral-200/60 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-800/60 dark:hover:text-neutral-200"
           >
-            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              className="h-4 w-4"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
               <polyline points="7 10 12 15 17 10" />
               <line x1="12" x2="12" y1="15" y2="3" />
@@ -104,19 +151,27 @@ function Header({ name, path, downloadUrl, copyContent }) {
 }
 
 function languageForPath(filePath) {
-  const name = filePath.split('/').pop().toLowerCase();
-  if (name === 'dockerfile') return 'dockerfile';
-  if (name === 'makefile' || name === 'justfile') return 'bash';
-  const ext = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1) : '';
-  return ext || 'plaintext';
+  const name = filePath.split("/").pop().toLowerCase();
+  if (name === "dockerfile") return "dockerfile";
+  if (name === "makefile" || name === "justfile") return "bash";
+  const ext = name.includes(".") ? name.slice(name.lastIndexOf(".") + 1) : "";
+  return ext || "plaintext";
 }
 
 /** Sticky-context banner shown whenever a historical version is displayed. */
 function VersionBanner({ version, onBack }) {
-  const when = version.date ? formatDate(version.date) : 'an earlier commit';
+  const when = version.date ? formatDate(version.date) : "an earlier commit";
   return (
     <div className="not-prose mb-6 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-amber-300/70 bg-amber-50 px-4 py-3 text-sm dark:border-amber-500/30 dark:bg-amber-500/10">
-      <svg className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <svg
+        className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
         <circle cx="12" cy="12" r="10" />
         <polyline points="12 6 12 12 16 14" />
       </svg>
@@ -124,10 +179,14 @@ function VersionBanner({ version, onBack }) {
         <p className="font-medium text-amber-800 dark:text-amber-200">
           Viewing version from {when}
           {version.author ? <> by {version.author}</> : null}
-          {version.deleted && ' — the file was deleted in this commit, showing the last version'}
+          {version.deleted &&
+            " — the file was deleted in this commit, showing the last version"}
         </p>
         {version.subject && (
-          <p className="truncate text-xs text-amber-700/80 dark:text-amber-300/80" title={version.subject}>
+          <p
+            className="truncate text-xs text-amber-700/80 dark:text-amber-300/80"
+            title={version.subject}
+          >
             {version.subject}
           </p>
         )}
@@ -142,8 +201,14 @@ function VersionBanner({ version, onBack }) {
   );
 }
 
-export default function Viewer({ path, refSha, refreshKey, onNavigate, onOutline }) {
-  const [state, setState] = useState({ status: 'loading' });
+export default function Viewer({
+  path,
+  refSha,
+  refreshKey,
+  onNavigate,
+  onOutline,
+}) {
+  const [state, setState] = useState({ status: "loading" });
   const isImage = isImagePath(path);
   const isPdf = isPdfPath(path);
   const pathCategory = fileCategoryForPath(path);
@@ -151,9 +216,10 @@ export default function Viewer({ path, refSha, refreshKey, onNavigate, onOutline
 
   // Outline for the Inspector: headings of the current markdown body (frontmatter
   // excluded); cleared when a non-markdown file or an error state is shown.
-  const loaded = state.status === 'ok' ? state.file : null;
-  const isMd = loaded != null && (loaded.category === 'markdown' || loaded.kind === 'md');
-  const mdBody = isMd ? splitFrontmatter(loaded.content ?? '')[1] : '';
+  const loaded = state.status === "ok" ? state.file : null;
+  const isMd =
+    loaded != null && (loaded.category === "markdown" || loaded.kind === "md");
+  const mdBody = isMd ? splitFrontmatter(loaded.content ?? "")[1] : "";
   useEffect(() => {
     onOutline?.(isMd ? extractHeadings(mdBody) : []);
   }, [onOutline, isMd, mdBody]);
@@ -162,64 +228,96 @@ export default function Viewer({ path, refSha, refreshKey, onNavigate, onOutline
     // Binary kinds render straight from a URL — but a historical version
     // still fetches the JSON form so the banner has author/date/subject.
     if ((isImage || isPdf) && !isVersion) return;
-    setState({ status: 'loading' });
+    setState({ status: "loading" });
     let alive = true;
     const load = isVersion ? fetchVersion(path, refSha) : fetchFile(path);
     load
-      .then((file) => alive && setState({ status: 'ok', file }))
-      .catch((e) => alive && setState({ status: 'error', message: e.message }));
+      .then((file) => alive && setState({ status: "ok", file }))
+      .catch((e) => alive && setState({ status: "error", message: e.message }));
     return () => {
       alive = false;
     };
   }, [path, refreshKey, isImage, isPdf, isVersion, refSha]);
 
   const sourceUrl = isVersion ? versionRawUrl(path, refSha) : rawUrl(path);
-  const dlUrl = isVersion ? versionDownloadUrl(path, refSha) : downloadUrl(path);
+  const dlUrl = isVersion
+    ? versionDownloadUrl(path, refSha)
+    : downloadUrl(path);
 
   if (isImage || isPdf) {
-    if (isVersion && state.status === 'loading') {
+    if (isVersion && state.status === "loading") {
       return (
         <Centered>
           <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-neutral-300 border-t-sky-500" />
         </Centered>
       );
     }
-    if (isVersion && state.status === 'error') {
+    if (isVersion && state.status === "error") {
       return (
         <Centered>
-          <p className="font-medium text-neutral-500 dark:text-neutral-300">{path}</p>
+          <p className="font-medium text-neutral-500 dark:text-neutral-300">
+            {path}
+          </p>
           <p className="mt-1">{state.message}</p>
         </Centered>
       );
     }
     return (
       <div className="mx-auto max-w-4xl px-6 py-8 sm:px-10">
-        {isVersion && <VersionBanner version={state.file} onBack={() => onNavigate(path)} />}
-        <Header name={path.split('/').pop()} path={path} downloadUrl={dlUrl} />
+        {isVersion && (
+          <VersionBanner version={state.file} onBack={() => onNavigate(path)} />
+        )}
+        <Header
+          name={path.split("/").pop()}
+          path={path}
+          downloadUrl={dlUrl}
+          onNavigate={onNavigate}
+        />
         {isImage ? (
-          <ImageView src={sourceUrl} alt={path.split('/').pop()} reloadKey={isVersion ? 0 : refreshKey} />
+          <ImageView
+            src={sourceUrl}
+            alt={path.split("/").pop()}
+            reloadKey={isVersion ? 0 : refreshKey}
+          />
         ) : (
-          <PdfView path={path} src={sourceUrl} isVersion={isVersion} reloadKey={isVersion ? 0 : refreshKey} />
+          <PdfView
+            path={path}
+            src={sourceUrl}
+            isVersion={isVersion}
+            reloadKey={isVersion ? 0 : refreshKey}
+          />
         )}
       </div>
     );
   }
 
-  const isDownloadOnly = state.status === 'ok' && state.file.previewable === false;
+  const isDownloadOnly =
+    state.status === "ok" && state.file.previewable === false;
   if (isDownloadOnly) {
     return (
       <div className="mx-auto max-w-3xl px-6 py-8 sm:px-10">
-        {isVersion && <VersionBanner version={state.file} onBack={() => onNavigate(path)} />}
-        <Header name={path.split('/').pop()} path={path} downloadUrl={dlUrl} />
+        {isVersion && (
+          <VersionBanner version={state.file} onBack={() => onNavigate(path)} />
+        )}
+        <Header
+          name={path.split("/").pop()}
+          path={path}
+          downloadUrl={dlUrl}
+          onNavigate={onNavigate}
+        />
         <Centered>
-          <p className="font-medium text-neutral-500 dark:text-neutral-300">This file type cannot be previewed.</p>
-          <p className="mt-1">Download the file to open it in the appropriate application.</p>
+          <p className="font-medium text-neutral-500 dark:text-neutral-300">
+            This file type cannot be previewed.
+          </p>
+          <p className="mt-1">
+            Download the file to open it in the appropriate application.
+          </p>
         </Centered>
       </div>
     );
   }
 
-  if (state.status === 'loading') {
+  if (state.status === "loading") {
     return (
       <Centered>
         <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-neutral-300 border-t-sky-500" />
@@ -227,10 +325,12 @@ export default function Viewer({ path, refSha, refreshKey, onNavigate, onOutline
     );
   }
 
-  if (state.status === 'error') {
+  if (state.status === "error") {
     return (
       <Centered>
-        <p className="font-medium text-neutral-500 dark:text-neutral-300">{path}</p>
+        <p className="font-medium text-neutral-500 dark:text-neutral-300">
+          {path}
+        </p>
         <p className="mt-1">{state.message}</p>
       </Centered>
     );
@@ -238,23 +338,34 @@ export default function Viewer({ path, refSha, refreshKey, onNavigate, onOutline
 
   const { file } = state;
   const category = file.category || pathCategory;
-  const [meta, body] = category === 'markdown' || file.kind === 'md'
-    ? splitFrontmatter(file.content ?? '')
-    : [null, file.content ?? ''];
+  const [meta, body] =
+    category === "markdown" || file.kind === "md"
+      ? splitFrontmatter(file.content ?? "")
+      : [null, file.content ?? ""];
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-8 sm:px-10">
-      {isVersion && <VersionBanner version={file} onBack={() => onNavigate(path)} />}
-      <Header name={file.name} path={file.path} downloadUrl={dlUrl} copyContent={file.content} />
+      {isVersion && (
+        <VersionBanner version={file} onBack={() => onNavigate(path)} />
+      )}
+      <Header
+        name={file.name}
+        path={file.path}
+        downloadUrl={dlUrl}
+        copyContent={file.content}
+        onNavigate={onNavigate}
+      />
       {file.truncated && (
         <div className="not-prose mb-5 rounded-lg border border-amber-300/70 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
-          Preview limited to {Math.round((file.previewLimit || file.previewBytes || 0) / 1024)} KiB. Download the file to view the complete contents.
+          Preview limited to{" "}
+          {Math.round((file.previewLimit || file.previewBytes || 0) / 1024)}{" "}
+          KiB. Download the file to view the complete contents.
         </div>
       )}
       {meta && Object.keys(meta).length > 0 && <Frontmatter meta={meta} />}
-      {category === 'markdown' || file.kind === 'md' ? (
+      {category === "markdown" || file.kind === "md" ? (
         <MarkdownView path={file.path} content={body} onNavigate={onNavigate} />
-      ) : category === 'code' || category === 'json' ? (
+      ) : category === "code" || category === "json" ? (
         <CodeBlock code={body} lang={languageForPath(file.path)} />
       ) : (
         <TextView content={body} />

@@ -54,6 +54,20 @@ export async function fetchTree() {
   return res.json();
 }
 
+export async function fetchAiTools() {
+  const res = await fetch('/api/ai/tools');
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || 'failed to find AI tools');
+  return body.tools;
+}
+
+export function aiTerminalUrl(id) {
+  const url = new URL('/api/ai/terminal', window.location.href);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  url.searchParams.set('id', id);
+  return url;
+}
+
 export async function fetchDashboard() {
   const res = await fetch('/api/dashboard');
   const body = await res.json().catch(() => ({}));
