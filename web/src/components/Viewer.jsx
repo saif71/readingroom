@@ -67,7 +67,7 @@ function Centered({ children }) {
   );
 }
 
-function Header({ name, path, downloadUrl, copyContent, onNavigate }) {
+function Header({ name, path, downloadUrl, copyContent, printable = true, onNavigate }) {
   const [copied, doCopy] = useCopy();
   const canCopy = typeof copyContent === "string";
   const goHome = (e) => {
@@ -87,7 +87,7 @@ function Header({ name, path, downloadUrl, copyContent, onNavigate }) {
           {path.split("/").join(" / ")}
         </p>
       </div>
-      <div className="mt-1 flex shrink-0 items-center gap-1">
+      <div className="mt-1 flex shrink-0 items-center gap-1 print:hidden">
         {canCopy && (
           <button
             onClick={() => doCopy(copyContent)}
@@ -145,6 +145,28 @@ function Header({ name, path, downloadUrl, copyContent, onNavigate }) {
             </svg>
           </a>
         )}
+        {printable && (
+          <button
+            onClick={() => window.print()}
+            title="Print"
+            aria-label={`Print ${name}`}
+            className="rounded-md p-1.5 text-neutral-500 transition-colors hover:bg-neutral-200/60 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-800/60 dark:hover:text-neutral-200"
+          >
+            <svg
+              className="h-4 w-4"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="6 9 6 2 18 2 18 9" />
+              <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+              <rect width="12" height="8" x="6" y="14" />
+            </svg>
+          </button>
+        )}
       </div>
     </header>
   );
@@ -162,7 +184,7 @@ function languageForPath(filePath) {
 function VersionBanner({ version, onBack }) {
   const when = version.date ? formatDate(version.date) : "an earlier commit";
   return (
-    <div className="not-prose mb-6 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-amber-300/70 bg-amber-50 px-4 py-3 text-sm dark:border-amber-500/30 dark:bg-amber-500/10">
+    <div className="not-prose mb-6 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-amber-300/70 bg-amber-50 px-4 py-3 text-sm dark:border-amber-500/30 dark:bg-amber-500/10 print:hidden">
       <svg
         className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400"
         viewBox="0 0 24 24"
@@ -263,7 +285,7 @@ export default function Viewer({
       );
     }
     return (
-      <div className="mx-auto max-w-4xl px-6 py-8 sm:px-10">
+      <div className="mx-auto max-w-4xl px-6 py-8 sm:px-10 print:max-w-none print:px-0 print:py-0">
         {isVersion && (
           <VersionBanner version={state.file} onBack={() => onNavigate(path)} />
         )}
@@ -295,7 +317,7 @@ export default function Viewer({
     state.status === "ok" && state.file.previewable === false;
   if (isDownloadOnly) {
     return (
-      <div className="mx-auto max-w-3xl px-6 py-8 sm:px-10">
+      <div className="mx-auto max-w-3xl px-6 py-8 sm:px-10 print:max-w-none print:px-0 print:py-0">
         {isVersion && (
           <VersionBanner version={state.file} onBack={() => onNavigate(path)} />
         )}
@@ -303,6 +325,7 @@ export default function Viewer({
           name={path.split("/").pop()}
           path={path}
           downloadUrl={dlUrl}
+          printable={false}
           onNavigate={onNavigate}
         />
         <Centered>
@@ -344,7 +367,7 @@ export default function Viewer({
       : [null, file.content ?? ""];
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-8 sm:px-10">
+    <div className="mx-auto max-w-3xl px-6 py-8 sm:px-10 print:max-w-none print:px-0 print:py-0">
       {isVersion && (
         <VersionBanner version={file} onBack={() => onNavigate(path)} />
       )}

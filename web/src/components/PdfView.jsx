@@ -27,7 +27,7 @@ export default function PdfView({ path, src, isVersion, reloadKey = 0 }) {
 
   return (
     <div>
-      <div className="mb-3 flex flex-wrap items-center gap-2">
+      <div className="mb-3 flex flex-wrap items-center gap-2 print:hidden">
         {!isVersion && (
           <button
             onClick={openExternally}
@@ -52,7 +52,7 @@ export default function PdfView({ path, src, isVersion, reloadKey = 0 }) {
           key={`${src}:${reloadKey}`}
           src={src}
           title={path.split('/').pop()}
-          className="h-[calc(100vh-12rem)] min-h-[32rem] w-full rounded-lg border border-neutral-200 dark:border-neutral-800"
+          className="h-[calc(100vh-12rem)] min-h-[32rem] w-full rounded-lg border border-neutral-200 dark:border-neutral-800 print:h-[90vh] print:min-h-0 print:rounded-none print:border-0"
         />
       ) : (
         <div className="flex h-[calc(100vh-12rem)] min-h-[32rem] flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-neutral-300 text-center text-sm text-neutral-400 dark:border-neutral-700">

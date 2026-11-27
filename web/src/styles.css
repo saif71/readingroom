@@ -43,3 +43,45 @@ pre.shiki code {
   display: block;
   width: fit-content;
 }
+
+/* Print: app chrome (sidebars, toolbars) is hidden with Tailwind's
+   print:hidden; these rules adapt the document itself to paper. */
+@media print {
+  @page {
+    margin: 16mm;
+  }
+
+  html,
+  body {
+    height: auto;
+    background: #fff;
+  }
+
+  /* Wrap long lines instead of clipping them, and avoid splitting blocks. */
+  pre.shiki {
+    overflow: visible;
+    white-space: pre-wrap;
+    break-inside: avoid;
+  }
+
+  pre.shiki code {
+    width: auto;
+    white-space: pre-wrap;
+  }
+
+  .prose h1,
+  .prose h2,
+  .prose h3,
+  .prose h4 {
+    break-after: avoid;
+  }
+
+  .prose img {
+    break-inside: avoid;
+    max-width: 100%;
+  }
+
+  .prose table {
+    font-size: 0.85em;
+  }
+}

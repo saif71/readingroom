@@ -374,7 +374,7 @@ export default function Inspector({
 
   if (!open) {
     return (
-      <aside className="flex h-full w-10 shrink-0 flex-col items-center border-l border-neutral-200 bg-zinc-100 py-3 dark:border-neutral-800 dark:bg-neutral-800">
+      <aside className="flex h-full w-10 shrink-0 flex-col items-center border-l border-neutral-200 bg-zinc-100 py-3 dark:border-neutral-800 dark:bg-neutral-800 print:hidden">
         <button
           onClick={() => onToggleOpen(true)}
           title="Show inspector"
@@ -412,7 +412,7 @@ export default function Inspector({
           mobile
             ? "fixed inset-y-0 right-0 z-40 w-72 max-w-[85vw] border-l shadow-xl"
             : "w-72 shrink-0 border-l sm:w-80"
-        } flex h-full flex-col border-neutral-200 bg-zinc-100 dark:border-neutral-800 dark:bg-neutral-800`}
+        } flex h-full flex-col border-neutral-200 bg-zinc-100 dark:border-neutral-800 dark:bg-neutral-800 print:hidden`}
       >
       <div className="space-y-2 border-b border-neutral-200 px-3 pb-2.5 pt-3 dark:border-neutral-800">
         <div className="flex items-center gap-1.5 justify-between">

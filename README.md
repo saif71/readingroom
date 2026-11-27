@@ -20,6 +20,7 @@ Codebases are drowning in documentation: READMEs, design docs, agent instruction
 - **Images** - `png`, `jpg`, `jpeg`, `webp`, `gif`, `avif`, and `svg` render right in the viewer
 - **PDFs** - rendered by your browser's built-in viewer, with an "Open in system viewer" fallback for browsers that can't display PDFs inline
 - **Download** - a download button next to every open file saves it to your computer; if you're viewing an older version from the History panel, you get that exact version
+- **Print** - a print button next to Copy and Download opens your browser's print dialog with just the document: navigation, toolbars, and dark-mode colors are left out, and long code lines wrap on paper
 - **File details & history** - a side panel shows the essentials at a glance (size, word count, reading time, who last edited the file), plus a History tab listing every saved change - click one to view the file as it was back then
 - **Filter by name** - press `/` and start typing
 - **Live reload** - files created, edited, or deleted by you (or your AI agents) appear instantly

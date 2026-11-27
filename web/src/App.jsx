@@ -167,6 +167,34 @@ export default function App() {
     return () => window.removeEventListener("popstate", onPop);
   }, []);
 
+  // A dark-theme print would put light text on white paper. Drop the .dark
+  // class for the duration of the print (button or Cmd/Ctrl+P), then restore.
+  useEffect(() => {
+    const root = document.documentElement;
+    let restoreDark = false;
+    let restoreScheme = "";
+    const before = () => {
+      restoreDark = root.classList.contains("dark");
+      restoreScheme = root.style.colorScheme;
+      if (!restoreDark) return;
+      root.classList.remove("dark");
+      root.style.colorScheme = "light";
+    };
+    const after = () => {
+      if (!restoreDark) return;
+      root.classList.add("dark");
+      root.style.colorScheme = restoreScheme;
+      restoreDark = false;
+    };
+    window.addEventListener("beforeprint", before);
+    window.addEventListener("afterprint", after);
+    return () => {
+      window.removeEventListener("beforeprint", before);
+      window.removeEventListener("afterprint", after);
+      after();
+    };
+  }, []);
+
   const navigate = useCallback((path) => {
     if (path === null) {
       history.pushState({}, "", "/");
@@ -207,9 +235,9 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen flex-col bg-zinc-100 text-neutral-900 dark:bg-zinc-800 dark:text-neutral-100">
+    <div className="flex h-screen flex-col bg-zinc-100 text-neutral-900 dark:bg-zinc-800 dark:text-neutral-100 print:block print:h-auto print:bg-white print:text-black">
       {isMobile && (
-        <header className="flex shrink-0 items-center justify-between px-3 py-2">
+        <header className="flex shrink-0 items-center justify-between px-3 py-2 print:hidden">
           <button
             onClick={() => toggleSidebar(!sidebarOpen)}
             title={sidebarOpen ? "Hide file tree" : "Show file tree"}
@@ -257,7 +285,7 @@ export default function App() {
           )}
         </header>
       )}
-      <div className="flex min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1 print:block">
         <Sidebar
           tree={tree}
           selected={current}
@@ -267,7 +295,7 @@ export default function App() {
           mobile={isMobile}
           onOpenQr={() => setQrOpen(true)}
         />
-        <main className="min-w-0 flex-1 overflow-y-auto bg-zinc-50 dark:bg-zinc-900 m-2 rounded-3xl sm:m-4">
+        <main className="min-w-0 flex-1 overflow-y-auto bg-zinc-50 dark:bg-zinc-900 m-2 rounded-3xl sm:m-4 print:m-0 print:overflow-visible print:rounded-none print:bg-white">
           {!tree ? (
             <div className="flex h-full items-center justify-center p-8 text-sm text-neutral-400">
               Scanning project files…

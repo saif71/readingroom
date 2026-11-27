@@ -257,7 +257,7 @@ export default function Sidebar({
 
   if (!open) {
     return (
-      <aside className="flex h-full w-10 shrink-0 flex-col items-center border-r border-neutral-200 bg-zinc-100 py-3 dark:border-neutral-800 dark:bg-neutral-800">
+      <aside className="flex h-full w-10 shrink-0 flex-col items-center border-r border-neutral-200 bg-zinc-100 py-3 dark:border-neutral-800 dark:bg-neutral-800 print:hidden">
         <button
           onClick={() => (window.location.href = "/")}
           title="home"
@@ -350,7 +350,7 @@ export default function Sidebar({
             : mode === "ai"
               ? "w-[min(65vw,500px)] shrink-0"
               : "w-72 shrink-0 sm:w-80"
-        } flex h-full flex-col bg-zinc-100 dark:border-neutral-800 dark:bg-neutral-800`}
+        } flex h-full flex-col bg-zinc-100 dark:border-neutral-800 dark:bg-neutral-800 print:hidden`}
       >
         <div className="px-3 pb-2 pt-3">
           <div className="flex items-center gap-2 px-1 pb-2">
