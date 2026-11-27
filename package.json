@@ -37,6 +37,7 @@
     "build": "vite build --config web/vite.config.js",
     "dev:server": "node bin/readingroom.js --no-open",
     "dev:web": "vite dev --config web/vite.config.js",
+    "postinstall": "node bin/fix-pty-perms.js",
     "test": "node test/smoke.test.mjs",
     "prepack": "npm run build"
   },
